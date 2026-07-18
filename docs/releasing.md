@@ -6,7 +6,7 @@ running agent is never interrupted mid-task.
 
 ## One-time setup
 
-1. Create the repo `jurvdw/claude-control` on GitHub and push. (If you use a
+1. Create the repo `Jurvdw/claude-control` on GitHub and push. (If you use a
    different name/owner, update `build.publish` in `packages/desktop/package.json`
    — it is baked into the app as `resources/app-update.yml` at build time.)
 2. Create a token with `repo` scope and export it as `GH_TOKEN` when releasing.
