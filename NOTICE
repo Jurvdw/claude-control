@@ -1,0 +1,82 @@
+Claude Control
+Copyright 2026 Jurvdw (https://github.com/Jurvdw)
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+--------------------------------------------------------------------------------
+USING THIS SOFTWARE WITH ANTHROPIC'S SERVICES
+--------------------------------------------------------------------------------
+
+This software is not affiliated with, endorsed by, or sponsored by Anthropic.
+"Claude" is a trademark of Anthropic, PBC and is used here only to describe
+interoperability.
+
+The Apache License above governs this SOURCE CODE. It does NOT grant you any
+right to use Anthropic's services. That is a separate relationship between you
+and Anthropic, governed by their terms — which this license cannot widen and
+does not attempt to. You are responsible for your own compliance.
+
+Before you run or distribute this software, understand the following.
+
+1. YOU BRING YOUR OWN CREDENTIALS.
+   This project ships no API key and no account. Every deployment authenticates
+   with credentials belonging to the person running it.
+
+2. SUBSCRIPTION MODE IS FOR YOUR OWN, INDIVIDUAL USE.
+   The app can run agents on a personal Claude subscription via the Claude Agent
+   SDK, using a token from `claude setup-token`. Anthropic's Consumer Terms
+   state that you "may not share your Account login information, Anthropic API
+   key, or Account credentials with anyone else or make your Account available
+   to anyone else."
+
+   Therefore, in this mode you MUST NOT:
+     - expose the app as a hosted or multi-user service;
+     - pool, proxy, relay, or resell subscription access;
+     - let anyone else's requests reach Anthropic through your account.
+
+   The code enforces a technical guard: subscription mode is gated behind
+   SELF_HOSTED=true, which only the packaged desktop app sets. Do not remove
+   that gate to run a shared service — the gate is a safety rail, not the rule
+   itself. The rule is Anthropic's terms.
+
+   For anything multi-user, use API-key (BYOK) mode, where each user supplies
+   their own key, or Anthropic's commercial offerings.
+
+3. AUTOMATED ACCESS.
+   Anthropic's Consumer Terms restrict accessing the services "through automated
+   or non-human means," excepting use of an Anthropic API Key or where Anthropic
+   has given permission. This project drives Claude programmatically. In BYOK
+   mode that is API-key access. In subscription mode it relies on Anthropic's
+   own Agent SDK and its official `setup-token` flow. If Anthropic changes what
+   that flow permits, subscription mode may stop working or stop being
+   permitted, and you are expected to stop using it accordingly.
+
+4. THE USAGE POLICY APPLIES TO WHATEVER YOUR AGENTS DO.
+   Agentic use is still covered by Anthropic's Usage Policy. You are responsible
+   for what you direct agents to do, including the prohibitions on illegal
+   activity, weapons, CSAM, harassment, privacy violation, fraud, disinformation
+   and election interference, jailbreaking or circumventing model guardrails,
+   and training competing models on Claude inputs/outputs without authorization.
+
+5. DISCLOSE AI TO HUMANS.
+   Anthropic's Usage Policy requires that external-facing chatbots and agents
+   disclose to people that they are interacting with AI rather than a human.
+   This app labels agent messages as AI in its own interface. If you connect an
+   agent to any outward channel — email, chat, webhooks, a public site — keeping
+   that disclosure intact is your responsibility.
+
+Current terms (these links, not this summary, are authoritative):
+  Usage Policy      https://www.anthropic.com/legal/aup
+  Consumer Terms    https://www.anthropic.com/legal/consumer-terms
+  Commercial Terms  https://www.anthropic.com/legal/commercial-terms
+
+This notice is a good-faith summary for developers, not legal advice.

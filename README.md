@@ -79,6 +79,33 @@ The default and the only option for hosted/browser use: paste an Anthropic API k
 
 The provider is chosen per-account by which credential you connect (subscription wins when present and self-hosted). See [docs/API_CONTRACT.md](docs/API_CONTRACT.md) for `/provider/status` and `/api-keys`.
 
+## License & using this with Claude
+
+Licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, and
+distribute, commercially or not, with a patent grant.
+
+That license covers **this source code only**. It grants you nothing with
+respect to Anthropic's services: that's a separate relationship between you and
+Anthropic, and a license from us cannot widen it. Bring your own credentials and
+follow their terms.
+
+**Read [NOTICE](NOTICE) before deploying.** Apache 2.0 §4(d) requires that file
+to travel with any copy you distribute, and it spells out what actually matters:
+
+- **Subscription mode is single-user, self-hosted only.** Anthropic's Consumer
+  Terms forbid sharing account credentials or making your account available to
+  others — so never expose it as a hosted or multi-user service, and never pool,
+  proxy, or resell subscription access. `SELF_HOSTED=true` gates this in code;
+  don't strip the gate to work around the rule. **Multi-user means BYOK**, where
+  each user brings their own API key.
+- **The Usage Policy covers whatever your agents do**, and you're responsible
+  for directing them.
+- **Tell people they're talking to AI.** The UI labels agents; if you wire one
+  to email, chat, or a public endpoint, keep that disclosure.
+
+Not affiliated with or endorsed by Anthropic. "Claude" is their trademark, used
+here only to describe interoperability.
+
 ## VPS / single-node deployment
 
 The app is self-contained — it needs only Node.js. The embedded Postgres works on a server too, so a minimal deploy is:
