@@ -20,7 +20,8 @@
     "db:seed": "npm run db:seed -w @cc/server",
     "test": "npm run test -w @cc/server",
     "lint": "npm run lint -w @cc/server && npm run lint -w @cc/web",
-    "e2e": "npm run e2e -w @cc/desktop"
+    "e2e": "npm run e2e -w @cc/desktop",
+    "deploy:local": "node scripts/deploy-local.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

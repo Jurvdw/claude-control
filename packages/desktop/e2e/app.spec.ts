@@ -114,11 +114,11 @@ test.describe('Claude Control desktop', () => {
 
     await page.getByPlaceholder(/Value to protect/).fill('Klant 12345678');
     await page.getByRole('button', { name: /Add to vault/ }).click();
-    await expect(page.getByText('<DATA_1>')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('code', { hasText: 'DATA_1' }).first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByPlaceholder(/Paste a sample message/).fill('Bel Klant 12345678 vandaag');
     await page.getByRole('button', { name: 'Preview' }).click();
     // What Claude would receive must not contain the real value.
-    await expect(page.getByText(/Bel <DATA_1> vandaag/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('main')).toContainText('Bel <DATA_1> vandaag', { timeout: 15_000 });
   });
 });
