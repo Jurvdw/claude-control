@@ -57,6 +57,16 @@ export async function assembleContext(
     ? 'This is behind-the-scenes agent-to-agent traffic: be terse, structured, and token-minimal. No pleasantries.'
     : personalityLine(agent.personality);
 
+  // The system prompt is the CACHED PREFIX: it sits in front of the tool
+  // schemas and is re-read at ~0.1x instead of re-written at 1.25x, but only
+  // while it stays byte-identical between runs.
+  //
+  // So nothing volatile may live here. The Brain index and memory keys used to,
+  // and they change constantly — every proactive flag_important capture edited
+  // the index, which invalidated this block AND the ~3k of tool schemas behind
+  // it, forcing a full-price rewrite on the next run of every agent in the
+  // workspace. They now ride in the message body instead (see `volatile`),
+  // where changing is free.
   const system = [
     agent.systemPrompt.trim(),
     '',
@@ -65,12 +75,6 @@ export async function assembleContext(
     agent.isManager
       ? 'You are the Manager: you may decompose tasks, assign work to other agents by @mentioning them or via create_task, collect results, and keep the Brain accurate. For any complex, multi-step request, FIRST call create_plan with a short goal and ordered steps so the Commander can watch progress, then execute the steps, calling update_plan_step to mark each running → done as you go.'
       : '',
-    '',
-    'SHARED BRAIN INDEX (titles + summaries only — use read_brain_note to pull full notes on demand; never assume content you have not read):',
-    brainIndex,
-    '',
-    'YOUR PRIVATE MEMORY KEYS (use recall_memory to read):',
-    memoryIndex,
     '',
     'TOOL & COLLABORATION RULES:',
     '- Pull only the Brain notes relevant to the task. Keep context minimal.',
@@ -94,6 +98,18 @@ export async function assembleContext(
   // trigger changes every run and stays uncached. If there's no history yet, we
   // send the trigger alone (the provider caches the tail automatically).
   const blocks: LLMContentBlock[] = [];
+
+  // Volatile context, evicted from the system prompt so that changing it costs
+  // only itself rather than invalidating the system + tool-schema prefix.
+  const volatile = [
+    'SHARED BRAIN INDEX (titles + summaries only — use read_brain_note to pull full notes on demand; never assume content you have not read):',
+    brainIndex,
+    '',
+    'YOUR PRIVATE MEMORY KEYS (use recall_memory to read):',
+    memoryIndex,
+  ].join('\n');
+  blocks.push({ type: 'text', text: volatile });
+
   if (history) {
     blocks.push({ type: 'text', text: history, cache_control: { type: 'ephemeral' } });
   }
