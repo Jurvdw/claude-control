@@ -1,0 +1,82 @@
+{
+  "name": "@cc/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Control desktop shell (Electron).",
+  "author": "Claude Control",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "stage": "node scripts/stage.mjs",
+    "pack": "node scripts/stage.mjs && electron-builder --dir",
+    "dist": "node scripts/stage.mjs && electron-builder",
+    "release": "node scripts/stage.mjs && electron-builder --publish always"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.claudecontrol.app",
+    "productName": "Claude Control",
+    "electronVersion": "33.4.11",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/server",
+        "to": "server"
+      },
+      {
+        "from": "build/web/dist",
+        "to": "web/dist"
+      }
+    ],
+    "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jurvdw",
+        "repo": "claude-control",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Claude Control"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

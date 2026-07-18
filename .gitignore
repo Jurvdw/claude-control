@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+npm-debug.log*
+.DS_Store
+coverage/
+packages/server/prisma/*.db
+packages/web/dist/
+storage/
+uploads/
+outputs/
+.vite/
+# Embedded Postgres data + downloaded binaries
+packages/server/data/
+data/
+# Electron packaging output
+packages/desktop/build/
+packages/desktop/release/
+packages/desktop/release/

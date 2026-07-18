@@ -1,0 +1,754 @@
+// Claude Control — data model
+// Multi-tenant: every domain row is scoped by serverId; every server is owned
+// by a user (org seam left nullable for a future teams tier). Tenant isolation
+// is enforced in the access layer (see src/auth/guards.ts) — write tests early.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Identity ──────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions      Session[]
+  memberships   ServerMember[]
+  apiKeys       ApiKey[]
+  ownedServers  Server[]       @relation("ServerOwner")
+  invitesCreated Invite[]      @relation("InviteCreator")
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// Encrypted Anthropic API key (AES-256-GCM). Per user (org seam nullable).
+model ApiKey {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String   @default("Anthropic")
+  ciphertext String // base64: iv || authTag || data
+  last4      String // last 4 chars of the plaintext key, for display
+  valid      Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// ─── Servers (projects) & membership ────────────────────────────────────────
+
+model Server {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  iconUrl     String?
+  ownerId     String
+  owner       User     @relation("ServerOwner", fields: [ownerId], references: [id])
+  // Server-wide settings (proactivity default, approval mode, hop limit, etc.)
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members    ServerMember[]
+  roles      Role[]
+  channels   Channel[]
+  agents     Agent[]
+  brainNotes BrainNote[]
+  tasks      Task[]
+  schedules  Schedule[]
+  hooks      Hook[]
+  files      FileAsset[]
+  outputs    Output[]
+  runs       Run[]
+  invites    Invite[]
+  webhooks   ServerWebhook[]
+  workflows  Workflow[]
+  plans      Plan[]
+  questions  AgentQuestion[]
+  emailDrafts EmailDraft[]
+  resumeJobs ResumeJob[]
+  emailAccount EmailAccount?
+  mcpServers McpServer[]
+
+  @@index([ownerId])
+  @@map("servers")
+}
+
+// An external MCP server mounted as agent tools. stdio spawns a local process;
+// sse/http connect to a remote endpoint. Secrets (env / headers) are encrypted.
+model McpServer {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name       String   // tool prefix, e.g. "github" → mcp__github__*
+  transport  String   // stdio | sse | http
+  command    String?  // stdio
+  args       Json     @default("[]") // stdio args (string[])
+  url        String?  // sse / http
+  secretsEnc String?  // encrypted JSON: { env?, headers? }
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([serverId, name])
+  @@map("mcp_servers")
+}
+
+// A connected mailbox (IMAP read/sort + SMTP send) via an app password. One per
+// server; the password is encrypted at rest with the per-install key.
+model EmailAccount {
+  id          String   @id @default(cuid())
+  serverId    String   @unique
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  email       String
+  imapHost    String
+  imapPort    Int      @default(993)
+  smtpHost    String
+  smtpPort    Int      @default(465)
+  secure      Boolean  @default(true)
+  passwordEnc String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("email_accounts")
+}
+
+// A durable, mechanical (non-AI) auto-resume for a run that was parked when a
+// usage/rate limit was hit. The schedule ticker re-enqueues the trigger at
+// resumeAt (persisted, so it survives restarts and multi-hour waits) — letting a
+// big overnight task span multiple usage windows.
+model ResumeJob {
+  id       String   @id @default(cuid())
+  serverId String
+  server   Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  agentId  String
+  trigger  Json     // serialized AgentTrigger to re-enqueue
+  resumeAt DateTime
+  status   String   @default("pending") // pending | done
+  reason   String?
+  attempt  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([status, resumeAt])
+  @@map("resume_jobs")
+}
+
+// An agent's question to the Commander (open text or multiple choice). The
+// answer is posted back and re-triggers the asking agent so it can continue.
+model AgentQuestion {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  agentId    String
+  channelId  String?
+  dmThreadId String?
+  runId      String?
+  prompt     String
+  kind       String   @default("open") // open | choice
+  options    Json     @default("[]")
+  status     String   @default("pending") // pending | answered
+  answer     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([serverId])
+  @@map("agent_questions")
+}
+
+// An email an agent wants to send, held for the Commander to preview, edit
+// inline, revise via the agent, or send. Nothing reaches SMTP until they act.
+model EmailDraft {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  agentId    String
+  channelId  String?
+  dmThreadId String?
+  runId      String?
+  fromAddr   String?
+  to         String
+  cc         String?
+  subject    String
+  body       String
+  status     String   @default("pending") // pending | sent | discarded
+  messageId  String? // SMTP Message-ID once sent
+  sentAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([serverId])
+  @@map("email_drafts")
+}
+
+// A Manager-authored plan: a goal broken into ordered steps that execute and
+// update their status live, so the Commander can watch progress.
+model Plan {
+  id         String     @id @default(cuid())
+  serverId   String
+  server     Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  agentId    String?
+  channelId  String?
+  dmThreadId String?
+  runId      String?
+  goal       String
+  status     String     @default("active") // active | done | failed
+  steps      PlanStep[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([serverId])
+  @@map("plans")
+}
+
+model PlanStep {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  order     Int
+  title     String
+  agentName String?
+  status    String   @default("pending") // pending | running | done | failed | skipped
+  result    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
+  @@map("plan_steps")
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model ServerMember {
+  id        String     @id @default(cuid())
+  serverId  String
+  server    Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      MemberRole @default(MEMBER)
+  createdAt DateTime   @default(now())
+
+  @@unique([serverId, userId])
+  @@index([userId])
+  @@map("server_members")
+}
+
+model Invite {
+  id        String    @id @default(cuid())
+  serverId  String
+  server    Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  code      String    @unique
+  role      MemberRole @default(MEMBER)
+  createdById String
+  createdBy   User    @relation("InviteCreator", fields: [createdById], references: [id])
+  maxUses   Int?
+  uses      Int       @default(0)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([serverId])
+  @@map("invites")
+}
+
+// Per-server display roles for agents (name + color). Distinct from MemberRole.
+model Role {
+  id       String  @id @default(cuid())
+  serverId String
+  server   Server  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name     String
+  color    String  @default("#d97757")
+  agents   Agent[]
+
+  @@index([serverId])
+  @@map("roles")
+}
+
+// ─── Agents ─────────────────────────────────────────────────────────────────
+
+enum AgentModelClass {
+  HAIKU
+  SONNET
+  OPUS
+}
+
+enum AgentEffort {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AgentStatus {
+  IDLE
+  THINKING
+  WORKING
+  ERROR
+  PAUSED
+}
+
+model Agent {
+  id           String          @id @default(cuid())
+  serverId     String
+  server       Server          @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name         String
+  avatarUrl    String
+  bio          String          @default("")
+  statusText   String          @default("")
+  roleId       String?
+  role         Role?           @relation(fields: [roleId], references: [id])
+  isManager    Boolean         @default(false)
+  systemPrompt String
+  modelClass   AgentModelClass @default(SONNET)
+  effort       AgentEffort     @default(MEDIUM)
+  // 0..100 slider: 0 = professional, 100 = full personality. Chat-only flavor.
+  personality  Int             @default(30)
+  // Array of enabled tool names (see src/tools/registry.ts).
+  enabledTools Json            @default("[]")
+  // "server" | "private" | "both"
+  memoryScope  String          @default("both")
+  // { proactive: bool, taskDoneNotify: bool, scheduledReports: bool }
+  proactivity  Json            @default("{}")
+  requiresApproval Boolean     @default(false)
+  status       AgentStatus     @default(IDLE)
+  thinkingLine String          @default("")
+  enabled      Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  memories Memory[]
+  messages Message[]
+  runs     Run[]
+  tasks    Task[]
+
+  @@index([serverId])
+  @@map("agents")
+}
+
+// Global (not server-scoped) starter templates for the agent creator.
+model AgentTemplate {
+  id           String          @id @default(cuid())
+  key          String          @unique
+  name         String
+  description  String
+  avatarUrl    String
+  systemPrompt String
+  modelClass   AgentModelClass @default(SONNET)
+  effort       AgentEffort     @default(MEDIUM)
+  enabledTools Json            @default("[]")
+  isManager    Boolean         @default(false)
+  roleColor    String          @default("#d97757")
+
+  @@map("agent_templates")
+}
+
+// ─── Channels, DMs, messages ────────────────────────────────────────────────
+
+model Channel {
+  id          String    @id @default(cuid())
+  serverId    String
+  server      Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name        String
+  topic       String    @default("")
+  isDefault   Boolean   @default(false)
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  messages Message[]
+  hooks    Hook[]
+  tasks    Task[]
+
+  @@index([serverId])
+  @@map("channels")
+}
+
+// A DM thread between a user and an agent (or user<->user later).
+model DmThread {
+  id        String    @id @default(cuid())
+  serverId  String
+  userId    String
+  agentId   String?
+  createdAt DateTime  @default(now())
+  messages  Message[]
+
+  @@index([serverId, userId])
+  @@map("dm_threads")
+}
+
+enum SenderType {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum ContentType {
+  TEXT
+  FILE
+  CARD
+  AUDIO // seam for future voice
+}
+
+model Message {
+  id           String      @id @default(cuid())
+  serverId     String
+  channelId    String?
+  channel      Channel?    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  dmThreadId   String?
+  dmThread     DmThread?   @relation(fields: [dmThreadId], references: [id], onDelete: Cascade)
+  senderType   SenderType
+  userId       String?
+  agentId      String?
+  agent        Agent?      @relation(fields: [agentId], references: [id])
+  contentType  ContentType @default(TEXT)
+  content      String
+  // Extra structured payload for cards/files (approval cards, file refs, etc.)
+  meta         Json        @default("{}")
+  // Set when this message was produced by an agent run.
+  runId        String?
+  createdAt    DateTime    @default(now())
+
+  reactions Reaction[]
+  files     FileAsset[]
+
+  @@index([serverId])
+  @@index([channelId, createdAt])
+  @@index([dmThreadId, createdAt])
+  @@map("messages")
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  // "up" | "down"
+  kind      String
+  // On thumbs-down: what was wrong (fed back into agent memory).
+  feedback  String?
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, kind])
+  @@map("reactions")
+}
+
+// ─── Brain (shared knowledge) & agent memory ────────────────────────────────
+
+model BrainNote {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  folder     String   @default("") // e.g. "About", "People", "Style"
+  title      String
+  // One-line summary used in the compact Brain index (token efficiency).
+  summary    String   @default("")
+  content    String   @default("")
+  updatedBy  String? // userId or agentId
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  proposals BrainProposal[]
+
+  @@index([serverId, folder])
+  @@map("brain_notes")
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A proposed write to a Brain note, awaiting Commander approval (diff).
+model BrainProposal {
+  id           String         @id @default(cuid())
+  serverId     String
+  noteId       String?
+  note         BrainNote?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  // For new notes when noteId is null.
+  folder       String         @default("")
+  title        String
+  summary      String         @default("")
+  newContent   String
+  proposedBy   String // agentId
+  status       ProposalStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+
+  @@index([serverId, status])
+  @@map("brain_proposals")
+}
+
+model Memory {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  serverId  String
+  key       String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+  @@map("memories")
+}
+
+// ─── Tasks, schedules, hooks ────────────────────────────────────────────────
+
+enum TaskStatus {
+  QUEUED
+  IN_PROGRESS
+  REVIEW
+  DONE
+  FAILED
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  serverId    String
+  server      Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  title       String
+  description String     @default("")
+  status      TaskStatus @default(QUEUED)
+  assignedAgentId String?
+  assignedAgent   Agent? @relation(fields: [assignedAgentId], references: [id])
+  channelId   String? // channel used for reporting
+  channel     Channel?   @relation(fields: [channelId], references: [id])
+  // "manual" | "managed" — managed tasks are decomposed by the Manager.
+  mode        String     @default("managed")
+  result      String?
+  createdBy   String? // userId
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([serverId, status])
+  @@map("tasks")
+}
+
+model Schedule {
+  id        String   @id @default(cuid())
+  serverId  String
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name      String
+  cron      String
+  prompt    String
+  agentId   String?
+  channelId String?
+  enabled   Boolean  @default(true)
+  lastRunAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([serverId])
+  @@map("schedules")
+}
+
+model Hook {
+  id        String   @id @default(cuid())
+  serverId  String
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name      String
+  // "new_file" | "keyword" | "webhook"
+  trigger   String
+  // e.g. { keyword: "urgent" } or { channelId: "..." }
+  config    Json     @default("{}")
+  agentId   String
+  channelId String?
+  channel   Channel? @relation(fields: [channelId], references: [id])
+  promptTemplate String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([serverId])
+  @@map("hooks")
+}
+
+// Per-server inbound webhook URL for the "webhook received" hook trigger.
+model ServerWebhook {
+  id               String   @id @default(cuid())
+  serverId         String
+  server           Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  secret           String   @unique
+  requireSignature Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  @@index([serverId])
+  @@map("server_webhooks")
+}
+
+// ─── Files & outputs ────────────────────────────────────────────────────────
+
+model FileAsset {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  messageId  String?
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  name       String
+  mimeType   String
+  size       Int
+  // Storage key (local path or S3 key).
+  storageKey String
+  // Server-side extracted text for PDFs/docs (for agent reading).
+  extractedText String?
+  uploadedBy String? // userId or agentId
+  createdAt  DateTime @default(now())
+
+  @@index([serverId])
+  @@map("files")
+}
+
+// Agent-produced deliverables (documents/PDFs), organized per task.
+model Output {
+  id         String   @id @default(cuid())
+  serverId   String
+  server     Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  taskId     String?
+  name       String
+  mimeType   String
+  size       Int
+  storageKey String
+  createdByAgentId String?
+  createdAt  DateTime @default(now())
+
+  @@index([serverId, taskId])
+  @@map("outputs")
+}
+
+// ─── Usage & governance ─────────────────────────────────────────────────────
+
+model Run {
+  id            String   @id @default(cuid())
+  serverId      String
+  server        Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  agentId       String?
+  agent         Agent?   @relation(fields: [agentId], references: [id])
+  // "mention" | "dm" | "task" | "schedule" | "hook" | "agent" | "manual"
+  trigger       String
+  model         String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  cacheReadTokens  Int   @default(0)
+  cacheWriteTokens Int   @default(0)
+  costUsd       Float    @default(0)
+  durationMs    Int      @default(0)
+  // "ok" | "error" | "parked"
+  status        String   @default("ok")
+  error         String?
+  taskId        String?
+  channelId     String?
+  // Tool names invoked during the run (for the activity timeline).
+  tools         Json     @default("[]")
+  createdAt     DateTime @default(now())
+
+  @@index([serverId, createdAt])
+  @@index([agentId])
+  @@map("runs")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// An action awaiting Commander approval (send email, write brain, run code, spend).
+model Approval {
+  id          String         @id @default(cuid())
+  serverId    String
+  agentId     String?
+  runId       String?
+  // "send_email" | "write_brain_note" | "run_code" | "spend" | custom
+  action      String
+  // The tool input / payload to execute on approval.
+  payload     Json           @default("{}")
+  summary     String         @default("")
+  status      ApprovalStatus @default(PENDING)
+  decidedBy   String? // userId
+  createdAt   DateTime       @default(now())
+  decidedAt   DateTime?
+
+  @@index([serverId, status])
+  @@map("approvals")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serverId  String?
+  // "mention" | "dm" | "task_done" | "approval" | "error"
+  kind      String
+  title     String
+  body      String   @default("")
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// An n8n-style automation: a graph of nodes (triggers + actions) wired together.
+// The graph is stored as JSON ({ nodes: [...], edges: [...] }) so both the GUI
+// canvas and agents (via tools) can build/modify it without schema churn.
+model Workflow {
+  id          String   @id @default(cuid())
+  serverId    String
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  enabled     Boolean  @default(true)
+  graph       Json     @default("{}")
+  createdBy   String? // userId or agentId
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  runs WorkflowRun[]
+
+  @@index([serverId])
+  @@map("workflows")
+}
+
+model WorkflowRun {
+  id         String    @id @default(cuid())
+  workflowId String
+  workflow   Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  serverId   String
+  // "running" | "ok" | "error"
+  status     String    @default("running")
+  // "manual" | "schedule" | "event" | "agent"
+  trigger    String    @default("manual")
+  // Per-node execution log: [{ nodeId, type, status, output, error }]
+  log        Json      @default("[]")
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([workflowId])
+  @@map("workflow_runs")
+}
