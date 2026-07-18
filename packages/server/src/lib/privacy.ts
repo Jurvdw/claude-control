@@ -218,6 +218,13 @@ export async function redact(serverId: string, text: string, settings: PrivacySe
       }
     }
   }
+
+  // Count what actually fired, so Settings can show whether a vault entry is
+  // earning its keep or never matching anything. Fire-and-forget: a stats
+  // update must never delay or fail a run.
+  const used = tokensIn(out);
+  if (used.length) void bumpHits(serverId, used).catch(() => {});
+
   return out;
 }
 

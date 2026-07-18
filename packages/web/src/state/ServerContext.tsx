@@ -86,9 +86,21 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
     setAgentList(agents);
     setTaskList(tasks);
 
-    // Auto-select default channel
+    // Auto-select default channel AND load its messages. Using the raw state
+    // setter here skipped the fetch that setActiveChannel does, so opening a
+    // workspace showed "This is the start of #general" on a channel with full
+    // history — it only populated once you clicked the channel by hand.
     const def = channels.find(c => c.isDefault) || channels[0];
-    if (def) setActiveChannelState(def);
+    if (def) {
+      setActiveChannelState(def);
+      setLoadingMessages(true);
+      import('../lib/api').then(({ messages: msgApi }) =>
+        msgApi.list(server.id, def.id)
+          .then(({ messages }) => setMessageList(messages))
+          .catch(() => {})
+          .finally(() => setLoadingMessages(false)),
+      );
+    }
 
     brainApi.listNotes(server.id).then(({ notes }) => setBrainNotes(notes)).catch(() => {});
     approvalsApi.list(server.id).then(({ approvals }) => setApprovalList(approvals)).catch(() => {});

@@ -29,8 +29,12 @@ const TEMPLATES: TemplateSeed[] = [
     // DEFAULT_TOOLS already includes create_task/update_task. web_search is a
     // capability flag (native server-side search) — the Manager fields most
     // "look this up" asks directly, so it gets it too, not just the Researcher.
-    // The Manager coordinates everything, so it alone carries the full kit.
-    enabledTools: [...DEFAULT_TOOLS, ...PLAN_TOOLS, ...FLOW_TOOLS, ...DOC_TOOLS, 'web_search'],
+    // The Manager coordinates everything, so it alone carries the full kit —
+    // including email. A new workspace seeds ONLY a Manager, so leaving email
+    // to the Email Writer made "send an email" impossible out of the box: the
+    // Manager just answered "I don't have a draft_email tool" (found in
+    // testing). Worth ~742 tok/call for the default agent to be able to act.
+    enabledTools: [...DEFAULT_TOOLS, ...PLAN_TOOLS, ...FLOW_TOOLS, ...DOC_TOOLS, ...EMAIL_TOOLS, 'web_search'],
     isManager: true,
     roleColor: '#d97757',
   },

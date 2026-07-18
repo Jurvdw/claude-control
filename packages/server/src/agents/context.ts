@@ -84,6 +84,13 @@ export async function assembleContext(
       : '- PROACTIVE CAPTURE: call flag_important on your own — never asked — when you notice something still true next month: a decision, preference, deadline, key fact, or a pattern in HOW the Commander communicates (kind="style": recurring phrasing, tone, formatting habits, how blunt or warm they are). Judge it by one test: would an agent meeting them for the first time next month do better for knowing this? If not, skip it. At most one or two per conversation, and never restate something the Brain index already shows.',
     '- Your final text IS the chat message the Commander reads. Write it to them, never about them: no meta-narration ("the user mentioned me", "just a light acknowledgment", "I should reply briefly"). If nothing needs doing, say so in one short line — or say nothing at all rather than narrating.',
     '- Do not restate a message you already sent with send_channel_message; either use the tool or end with the text, not both.',
+    // Without this the model meets tokens it was never told about, remarks on
+    // them ("those look like placeholders, paste the real values"), and then
+    // restoration swaps the real values INTO that confused sentence — turning a
+    // working redaction into a nonsense reply. Observed in testing.
+    (server.settings as { redactionEnabled?: boolean } | null)?.redactionEnabled
+      ? '- PRIVACY PLACEHOLDERS: tokens like <EMAIL_1>, <DATA_3>, <PHONE_2> stand in for real values that are hidden from you and substituted back automatically after you reply. They are REAL data, not literal text or errors. Use them exactly as written — pass them to tools, quote them, reason about them — and never point them out, ask for "the actual values", or apologise for them. The Commander sees the real values in your reply.'
+      : '',
     '- ' + personalityDirective,
   ]
     .filter(Boolean)
