@@ -260,9 +260,28 @@ function mapType(def: Record<string, unknown>): z.ZodTypeAny {
     case 'boolean':
       return z.boolean();
     case 'array':
-      return z.array(z.string());
-    case 'object':
-      return z.record(z.string(), z.unknown());
+      // Recurse into `items`. Hard-coding z.array(z.string()) told the model
+      // every array was a list of strings, silently discarding item schemas —
+      // so create_workflow's [{type:'agent'|'post'|'brain', ...}] arrived as
+      // bare strings, the enum never reached the model, and the resulting
+      // workflow was built from defaults. (Same cause as the create_plan bug
+      // fixed earlier by patching the symptom.)
+      return z.array(def.items && typeof def.items === 'object' ? mapType(def.items as Record<string, unknown>) : z.unknown());
+    case 'object': {
+      // Preserve declared properties so nested objects keep their shape;
+      // fall back to a loose record only when none are declared.
+      const props = def.properties as Record<string, Record<string, unknown>> | undefined;
+      if (!props) return z.record(z.string(), z.unknown());
+      const required = new Set((def.required as string[]) ?? []);
+      const shape: Record<string, z.ZodTypeAny> = {};
+      for (const [k, v] of Object.entries(props)) {
+        let zt = mapType(v);
+        if (typeof v.description === 'string') zt = zt.describe(v.description);
+        if (!required.has(k)) zt = zt.optional();
+        shape[k] = zt;
+      }
+      return z.object(shape);
+    }
     default:
       return z.any();
   }
@@ -317,3 +336,7 @@ function normalizeError(err: unknown): Error {
   }
   return err instanceof Error ? err : new Error(msg);
 }
+
+// Exposed for tests: the JSON-schema -> zod conversion is easy to break in ways
+// that only show up as a model silently receiving the wrong tool shape.
+export const __testing = { jsonSchemaToZodShape, mapType };

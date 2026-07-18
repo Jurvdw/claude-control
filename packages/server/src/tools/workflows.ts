@@ -48,12 +48,23 @@ async function compileGraph(
     const id = `n${i + 1}`;
     const position = { x: 80 + (i + 1) * 260, y: 80 };
     let node: WFNode;
+    // No silent catch-all. This used to be `else -> brain.write`, so a step
+    // with a missing or misspelled type quietly became an "Untitled" Brain
+    // write: a request for "summarise the Brain and post it to #general" built
+    // two brain.writes and no channel.post, the tool reported success, and the
+    // agent told the Commander it had wired up a post it had not. A wrong
+    // workflow that claims to work is worse than a rejected one.
     if (s.type === 'agent') {
       node = { id, type: 'agent.run', position, data: { agentId: agentByName(s.agent), prompt: s.prompt ?? '{{input}}' } };
     } else if (s.type === 'post') {
       node = { id, type: 'channel.post', position, data: { channelId: channelByName(s.channel), text: s.text ?? '{{input}}' } };
-    } else {
+    } else if (s.type === 'brain') {
       node = { id, type: 'brain.write', position, data: { title: s.title ?? 'Untitled', folder: s.folder ?? '', content: s.content ?? '{{input}}' } };
+    } else {
+      throw new Error(
+        `step ${i + 1} has type "${s.type ?? '(missing)'}" — must be "agent" (run an agent), "post" (post to a channel) or "brain" (write a Brain note). ` +
+          'To summarise something, use an "agent" step with a prompt, then a "post" step to publish the result.',
+      );
     }
     nodes.push(node);
     edges.push({ id: `${prevId}-${id}`, source: prevId, target: id });
