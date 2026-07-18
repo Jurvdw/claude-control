@@ -39,17 +39,62 @@ interface Fixtures {
   page: Page;
 }
 
+/** Fail fast if something already owns a port the test instance needs. */
+async function assertPortFree(port: number, what: string) {
+  const net = await import('node:net');
+  const inUse = await new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({ port, host: '127.0.0.1' });
+    socket.on('connect', () => { socket.destroy(); resolve(true); });
+    socket.on('error', () => resolve(false));
+    setTimeout(() => { socket.destroy(); resolve(false); }, 1500);
+  });
+  if (inUse) {
+    throw new Error(
+      `E2E ISOLATION FAILED — port ${port} (${what}) is already in use.\n` +
+        `Close Claude Control before running the e2e suite: the test app would ` +
+        `connect to the RUNNING instance's database and write into your real workspace.`,
+    );
+  }
+}
+
 export const test = base.extend<Fixtures>({
   app: async ({}, use) => {
     if (!existsSync(APP_EXE)) {
       throw new Error(`Packaged app not found at ${APP_EXE}. Build it (npm run dist) or set CC_APP_EXE.`);
     }
+
+    // --user-data-dir isolates the Postgres DATA DIR, but DATABASE_URL points at
+    // a FIXED port (54329). If another Postgres already holds that port — i.e.
+    // the real app is running — the test instance cannot bind, silently
+    // connects to the live cluster instead, and writes test accounts and
+    // workspaces into the user's real database. That happened on this suite's
+    // first run. Refuse to start rather than repeat it.
+    await assertPortFree(54329, 'Postgres (embedded)');
+    await assertPortFree(4000, 'backend');
     const userDataDir = mkdtempSync(path.join(tmpdir(), 'cc-e2e-'));
     const app = await electron.launch({
       executablePath: APP_EXE,
       args: [`--user-data-dir=${userDataDir}`],
+      env: { ...process.env, CC_E2E: '1' },
       timeout: BOOT_TIMEOUT,
     });
+
+    // PROVE the isolation before any test touches data. The backend derives
+    // PG_DATA_DIR from userData, so if the switch is ignored the app runs
+    // against the REAL workspace database — which is exactly what happened on
+    // the first run of this suite: test accounts and a test workspace ended up
+    // in the live database. Fail loudly instead of quietly corrupting it.
+    const actual = await app.evaluate(({ app: a }) => a.getPath('userData'));
+    if (path.resolve(actual) !== path.resolve(userDataDir)) {
+      await app.close().catch(() => {});
+      throw new Error(
+        `E2E ISOLATION FAILED — refusing to run.\n` +
+          `  expected userData: ${userDataDir}\n` +
+          `  actual userData:   ${actual}\n` +
+          `Tests would have written into the real workspace database.`,
+      );
+    }
+
     await use(app);
     await app.close().catch(() => {});
     // Postgres holds files briefly after shutdown; losing a temp dir is not
