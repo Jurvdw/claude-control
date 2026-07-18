@@ -10,9 +10,12 @@
     "stage": "node scripts/stage.mjs",
     "pack": "node scripts/stage.mjs && electron-builder --dir",
     "dist": "node scripts/stage.mjs && electron-builder",
-    "release": "node scripts/stage.mjs && electron-builder --publish always"
+    "release": "node scripts/stage.mjs && electron-builder --publish always",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "electron": "33.4.11",
     "electron-builder": "^25.1.8"
   },

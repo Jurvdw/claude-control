@@ -59,3 +59,25 @@ current version and a "Restart & install" button. Closing the app applies it.
   additive — a destructive change would break rollback to an older version.
 - Update failures are non-fatal by design: no network, no release, or a bad feed
   logs a warning and the app carries on.
+
+## Running the Electron e2e suite
+
+```bash
+npm run pack -w @cc/desktop   # refresh release/win-unpacked FIRST
+npm run e2e
+```
+
+The suite drives the packaged app in `release/win-unpacked`, **not** the
+installed one, because the Electron shell (main.cjs, preload.cjs, updater.cjs)
+lives inside `app.asar` and only changes when a build is produced — copying
+`server/dist` and `web/dist` into an installed app never updates it. Skipping
+`pack` means testing a stale binary; that is exactly how the first run reported
+a real-looking failure that was only an out-of-date bundle.
+
+Requirements:
+- The installed app must be **closed** — `PORT` is hard-coded to 4000 in
+  main.cjs (after the env spread, so it cannot be overridden).
+- Each test launches with a throwaway `--user-data-dir`, giving it its own
+  Postgres, storage and encryption key. Your real workspace is never touched.
+- No agent runs: the tests assert plumbing, so they are deterministic and cost
+  no subscription quota.
