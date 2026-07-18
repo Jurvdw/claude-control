@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import type { Server, Channel, Agent, Message, Task, BrainNote, Approval, Proposal, RunParkedEvent } from '../lib/types';
 import { servers as serversApi, channels as channelsApi, agents as agentsApi, tasks as tasksApi, brain as brainApi, approvals as approvalsApi } from '../lib/api';
-import { joinServer, leaveServer, onSocketEvent } from '../lib/socket';
+import { joinServer, leaveServer, onSocketEvent, onReconnect } from '../lib/socket';
 import { useAuth } from './AuthContext';
 
 interface ParkedInfo {
@@ -149,6 +149,18 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
     if (!activeServer) return;
 
     const offs = [
+      // Re-joining a room after a dropped connection does not replay what was
+      // missed, so refetch the open channel. Without this you reconnect and
+      // still never see the reply that arrived while you were disconnected.
+      onReconnect(() => {
+        if (!activeServer || !activeChannel) return;
+        import('../lib/api').then(({ messages: msgApi }) =>
+          msgApi.list(activeServer.id, activeChannel.id)
+            .then(({ messages }) => setMessageList(messages))
+            .catch(() => {}),
+        );
+      }),
+
       onSocketEvent('agent:status', (data: unknown) => {
         const { agentId, status, thinkingLine } = data as { serverId: string; agentId: string; status: string; thinkingLine?: string };
         setAgentList(prev => prev.map(a => a.id === agentId ? { ...a, status: status as Agent['status'], thinkingLine } : a));
