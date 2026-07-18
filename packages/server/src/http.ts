@@ -25,6 +25,7 @@ import { workflowsRouter } from './routes/workflows.js';
 import { plansRouter } from './routes/plans.js';
 import { questionsRouter } from './routes/questions.js';
 import { emailDraftsRouter } from './routes/emailDrafts.js';
+import { vaultRouter } from './routes/vault.js';
 import { emailRouter } from './routes/email.js';
 import { mcpRouter } from './routes/mcp.js';
 import { searchRouter } from './routes/search.js';
@@ -100,6 +101,9 @@ export function createApp() {
 
   // ── Email drafts (preview / edit / revise / send cards) ──────────────────────
   app.use('/servers/:serverId/email-drafts', emailDraftsRouter);
+
+  // ── Privacy vault (redaction mappings) ──────────────────────────────────────
+  app.use('/servers/:serverId/vault', vaultRouter);
 
   // ── Email (IMAP/SMTP integration) ────────────────────────────────────────────
   app.use('/servers/:serverId/email', emailRouter);

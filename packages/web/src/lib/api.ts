@@ -1,7 +1,7 @@
 import type {
   User, Server, ServerMember, ServerSettings, Channel, Message, Agent, AgentTemplate,
   Tool, BrainNote, NoteLink, NoteBacklink, GraphNode, GraphEdge, Proposal, Task, Approval, Notification, ApiKey, ProviderStatus,
-  UsageData, Schedule, Invite, MemberRole, Reaction, Workflow, WorkflowRun, WorkflowGraph, MessageFile, SearchResults, ActivityRun, Hook, Plan, AgentQuestion, EmailDraft,
+  UsageData, Schedule, Invite, MemberRole, Reaction, Workflow, WorkflowRun, WorkflowGraph, MessageFile, SearchResults, ActivityRun, Hook, Plan, AgentQuestion, EmailDraft, VaultEntry,
 } from './types';
 
 class ApiError extends Error {
@@ -245,6 +245,16 @@ export const emailDrafts = {
   discard: (serverId: string, id: string) => post<{ draft: EmailDraft }>(`/servers/${serverId}/email-drafts/${id}/discard`, {}),
   revise: (serverId: string, id: string, instruction: string) =>
     post<{ draft: EmailDraft }>(`/servers/${serverId}/email-drafts/${id}/revise`, { instruction }),
+};
+
+// Privacy vault: values swapped for placeholders before anything reaches Claude.
+export const vault = {
+  list: (serverId: string) => get<{ entries: VaultEntry[] }>(`/servers/${serverId}/vault`),
+  add: (serverId: string, value: string, label?: string) =>
+    post<{ token: string }>(`/servers/${serverId}/vault`, { value, label }),
+  remove: (serverId: string, id: string) => del<{ ok: boolean }>(`/servers/${serverId}/vault/${id}`),
+  preview: (serverId: string, text: string) =>
+    post<{ redacted: string; restored: string; enabled: boolean }>(`/servers/${serverId}/vault/preview`, { text }),
 };
 
 // Workspace backup / restore

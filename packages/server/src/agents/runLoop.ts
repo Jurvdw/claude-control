@@ -6,6 +6,7 @@ import { getProviderForUser, estimateCost, LLMRateLimitError, LLMAuthError } fro
 import type { LLMMessage, LLMContentBlock } from '../llm/types.js';
 import { assembleContext } from './context.js';
 import { resolveRunProfile } from './profile.js';
+import { redact, restore, restoreDeep, type PrivacySettings } from '../lib/privacy.js';
 import { enqueueAgentRun, type AgentTrigger } from './dispatch.js';
 import { getTool, toolSpecsFor, toolCatalog } from '../tools/registry.js';
 import { loadMcpServers } from '../lib/mcp.js';
@@ -89,6 +90,12 @@ export async function runAgent(trigger: AgentTrigger, opts?: { capture?: boolean
     const ctx = await assembleContext(agent, server, trigger, profile.historyLimit);
     const enabledTools = (agent.enabledTools as string[]) ?? [];
     const toolSpecs = toolSpecsFor(enabledTools);
+
+    // Data safety net: swap known-sensitive values for placeholders before any
+    // of this reaches the model. Restoration happens on the way back — on tool
+    // inputs (executeToolForRun) and on the final reply.
+    const privacy = (server.settings ?? {}) as PrivacySettings;
+    await redactContext(server.id, ctx, privacy);
     const messages: LLMMessage[] = [...ctx.messages];
 
     let finalText = '';
@@ -206,8 +213,13 @@ export async function runAgent(trigger: AgentTrigger, opts?: { capture?: boolean
         toolsUsed.add(tu.name);
         // External MCP tool → route to the MCP client (no local registry entry).
         if (tu.name.startsWith('mcp__')) {
-          const out = await callMcpTool(server.id, tu.name, tu.input as Record<string, unknown>);
-          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: out });
+          // Same contract as our own tools: the external server gets real
+          // values, and whatever it returns is redacted before the model sees it.
+          const mcpInput = privacy.redactionEnabled
+            ? ((await restoreDeep(server.id, tu.input)) as Record<string, unknown>)
+            : (tu.input as Record<string, unknown>);
+          const out = await callMcpTool(server.id, tu.name, mcpInput);
+          toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: await redact(server.id, out, privacy) });
           continue;
         }
         const tool = getTool(tu.name);
@@ -263,6 +275,10 @@ export async function runAgent(trigger: AgentTrigger, opts?: { capture?: boolean
     // Without the POSTING_TOOLS check the agent's trailing narration ("the user
     // mentioned me, just acknowledging") got posted as a second message on top
     // of the real reply it had already sent — noise, and billed tokens.
+    // Put the real values back before anyone reads the reply — the Commander
+    // must never see <EMAIL_2> where their customer's address belongs.
+    if (privacy.redactionEnabled && finalText) finalText = await restore(server.id, finalText);
+
     const alreadyPosted = [...toolsUsed].some((t) => POSTING_TOOLS.has(t));
     if (finalText.trim() && !opts?.capture) {
       if (!alreadyPosted) await postFinalMessage(agent, trigger, finalText.trim());
@@ -394,6 +410,31 @@ function needsApproval(
 
 // Execute a registered tool for a run, applying the approval policy. Shared by
 // the manual loop and the subscription (SDK-owned) loop.
+/**
+ * Redact a run's system prompt and message blocks in place. This is the single
+ * outbound choke point — everything the model sees is assembled here, so a value
+ * that survives this function is a value that reaches Anthropic.
+ */
+async function redactContext(
+  serverId: string,
+  ctx: { system: string; messages: LLMMessage[] },
+  privacy: PrivacySettings,
+): Promise<void> {
+  if (!privacy.redactionEnabled) return;
+  ctx.system = await redact(serverId, ctx.system, privacy);
+  for (const m of ctx.messages) {
+    if (typeof m.content === 'string') {
+      m.content = await redact(serverId, m.content, privacy);
+      continue;
+    }
+    for (const block of m.content as LLMContentBlock[]) {
+      if (block.type === 'text' && typeof block.text === 'string') {
+        block.text = await redact(serverId, block.text, privacy);
+      }
+    }
+  }
+}
+
 async function executeToolForRun(
   name: string,
   input: Record<string, unknown>,
@@ -404,15 +445,24 @@ async function executeToolForRun(
 ): Promise<string> {
   const tool = getTool(name);
   if (!tool) return `Unknown tool "${name}".`;
+
+  // The model reasons over placeholders, but tools must act on reality: an
+  // email to <EMAIL_2> has to be addressed to the actual mailbox. Restore first,
+  // so approval summaries and execution both see the real values.
+  const privacy = (server.settings ?? {}) as PrivacySettings;
+  const realInput = privacy.redactionEnabled
+    ? ((await restoreDeep(server.id, input)) as Record<string, unknown>)
+    : input;
+
   if (needsApproval(tool.name, tool.requiresApproval, agent, server)) {
-    const summary = tool.summarize?.(input) ?? tool.name;
+    const summary = tool.summarize?.(realInput) ?? tool.name;
     const approval = await prisma.approval.create({
       data: {
         serverId: server.id,
         agentId: agent.id,
         runId,
         action: tool.name,
-        payload: { input, channelId: trigger.channelId, taskId: trigger.taskId } as never,
+        payload: { input: realInput, channelId: trigger.channelId, taskId: trigger.taskId } as never,
         summary,
       },
     });
@@ -424,7 +474,7 @@ async function executeToolForRun(
     return `Action queued for Commander approval (${summary}). Do not retry; continue or wrap up.`;
   }
   try {
-    return await tool.execute(input, {
+    const out = await tool.execute(realInput, {
       serverId: server.id,
       agent,
       ownerUserId: server.ownerId,
@@ -433,6 +483,10 @@ async function executeToolForRun(
       taskId: trigger.taskId,
       runId,
     });
+    // The result goes straight back into the model's context, so it has to be
+    // redacted again — a tool that reads the mailbox or the Brain will happily
+    // hand back the very values we just stripped out.
+    return await redact(server.id, out, privacy);
   } catch (err) {
     return `Error: ${(err as Error).message}`;
   }

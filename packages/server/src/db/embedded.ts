@@ -221,6 +221,23 @@ CREATE TABLE IF NOT EXISTS "email_drafts" (
 );
 CREATE INDEX IF NOT EXISTS "email_drafts_serverId_idx" ON "email_drafts"("serverId");
 
+CREATE TABLE IF NOT EXISTS "vault_entries" (
+  "id" TEXT PRIMARY KEY,
+  "serverId" TEXT NOT NULL REFERENCES "servers"("id") ON DELETE CASCADE,
+  "token" TEXT NOT NULL,
+  "valueEnc" TEXT NOT NULL,
+  "fingerprint" TEXT NOT NULL,
+  "label" TEXT,
+  "kind" TEXT NOT NULL DEFAULT 'custom',
+  "auto" BOOLEAN NOT NULL DEFAULT false,
+  "hits" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "vault_entries_serverId_fingerprint_key" ON "vault_entries"("serverId", "fingerprint");
+CREATE UNIQUE INDEX IF NOT EXISTS "vault_entries_serverId_token_key" ON "vault_entries"("serverId", "token");
+CREATE INDEX IF NOT EXISTS "vault_entries_serverId_idx" ON "vault_entries"("serverId");
+
 CREATE TABLE IF NOT EXISTS "resume_jobs" (
   "id" TEXT PRIMARY KEY,
   "serverId" TEXT NOT NULL REFERENCES "servers"("id") ON DELETE CASCADE,

@@ -91,6 +91,7 @@ model Server {
   plans      Plan[]
   questions  AgentQuestion[]
   emailDrafts EmailDraft[]
+  vaultEntries VaultEntry[]
   resumeJobs ResumeJob[]
   emailAccount EmailAccount?
   mcpServers McpServer[]
@@ -178,6 +179,32 @@ model AgentQuestion {
 
   @@index([serverId])
   @@map("agent_questions")
+}
+
+// One sensitive value that must never leave the machine in plain text. The real
+// value is swapped for `token` on the way to the model and swapped back on the
+// way out, so Anthropic only ever sees e.g. <CUSTOMER_3_EMAIL>.
+//
+// `value` is stored encrypted: this table is a concentrated list of exactly the
+// data the feature exists to protect.
+model VaultEntry {
+  id        String   @id @default(cuid())
+  serverId  String
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  token     String // placeholder shown to the model, e.g. <EMAIL_2>
+  valueEnc  String // the real value, AES-256-GCM
+  fingerprint String // HMAC of the normalised value — lets us look up without decrypting
+  label     String? // human note, e.g. "Klant 10958736479 — contact"
+  kind      String   @default("custom") // custom | email | phone | iban | card
+  auto      Boolean  @default(false) // created by a detector rather than by hand
+  hits      Int      @default(0) // times redacted, so users can see it working
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([serverId, fingerprint])
+  @@unique([serverId, token])
+  @@index([serverId])
+  @@map("vault_entries")
 }
 
 // An email an agent wants to send, held for the Commander to preview, edit

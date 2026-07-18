@@ -372,3 +372,14 @@ export interface EmailDraft {
   status: 'pending' | 'sent' | 'discarded';
   sentAt?: string | null;
 }
+
+export interface VaultEntry {
+  id: string;
+  token: string;
+  label?: string | null;
+  kind: 'custom' | 'email' | 'phone' | 'iban' | 'card';
+  auto: boolean;
+  hits: number;
+  /** Masked preview — the real value never leaves the server. */
+  preview: string;
+}

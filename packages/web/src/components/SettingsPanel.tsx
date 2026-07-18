@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useServer } from '../state/ServerContext';
 import { useNotifications } from '../state/NotificationContext';
-import { apiKeys as keysApi, servers as serversApi, workspace as workspaceApi, hooks as hooksApi, email as emailApi, mcp as mcpApi } from '../lib/api';
+import { apiKeys as keysApi, servers as serversApi, workspace as workspaceApi, hooks as hooksApi, email as emailApi, mcp as mcpApi, vault as vaultApi } from '../lib/api';
 import type { WebhookInfo, TunnelStatus, EmailStatus, McpServerView } from '../lib/api';
 import { MCP_CATALOG, type McpCatalogEntry } from '../lib/mcpCatalog';
-import type { ProviderStatus, ApiKey, ServerSettings, BrainWritePolicy } from '../lib/types';
+import type { ProviderStatus, ApiKey, ServerSettings, BrainWritePolicy, VaultEntry } from '../lib/types';
 import { Button, Input } from './ui';
 
 type ConnectTab = 'apikey' | 'subscription';
@@ -257,10 +257,134 @@ export default function SettingsPanel() {
           <p className="text-xs text-ink-500 mt-2">Import is additive (existing agents/notes are skipped by name). Reload after importing.</p>
         </Section>
 
+        {/* ── Privacy vault ─────────────────────────────────────────────── */}
+        <VaultSection />
+
         {/* ── About / version ───────────────────────────────────────────── */}
         <AboutSection />
       </div>
     </div>
+  );
+}
+
+// Redaction: values swapped for placeholders before anything reaches Claude,
+// and swapped back in replies and tool calls.
+interface PrivacyFlags { redactionEnabled?: boolean; autoDetect?: boolean }
+
+function VaultSection() {
+  const { activeServer } = useServer();
+  const { addToast } = useNotifications();
+  const [entries, setEntries] = useState<VaultEntry[]>([]);
+  const [s, setS] = useState<PrivacyFlags>({});
+  const [value, setValue] = useState('');
+  const [label, setLabel] = useState('');
+  const [sample, setSample] = useState('');
+  const [preview, setPreview] = useState<{ redacted: string; restored: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    if (!activeServer) return;
+    vaultApi.list(activeServer.id).then((r) => setEntries(r.entries)).catch(() => {});
+  };
+  useEffect(() => {
+    if (!activeServer) return;
+    vaultApi.list(activeServer.id).then((r) => setEntries(r.entries)).catch(() => {});
+    serversApi.get(activeServer.id).then((r) => setS((r.settings ?? {}) as PrivacyFlags)).catch(() => {});
+  }, [activeServer]);
+
+  // Merge into the existing settings blob — a bare patch would drop the rest.
+  const patchSettings = async (flags: PrivacyFlags) => {
+    if (!activeServer) return;
+    const next = { ...s, ...flags };
+    setS(next);
+    try {
+      const current = (await serversApi.get(activeServer.id)).settings ?? {};
+      await serversApi.patch(activeServer.id, { settings: { ...current, ...next } as never });
+    } catch (e) {
+      addToast('Failed to save', (e as Error).message, 'error');
+    }
+  };
+
+  if (!activeServer) return null;
+
+  const input = 'w-full bg-ink-800 text-cream-100 rounded-lg px-3 py-1.5 text-sm border border-ink-700 focus:outline-none focus:border-clay';
+
+  const add = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    try {
+      const { token } = await vaultApi.add(activeServer.id, value.trim(), label.trim() || undefined);
+      addToast('Added to vault', `Claude will see ${token}`, 'success');
+      setValue(''); setLabel(''); load();
+    } catch (e) {
+      addToast("Couldn't add", (e as Error).message, 'error');
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    try { await vaultApi.remove(activeServer.id, id); load(); }
+    catch (e) { addToast("Couldn't remove", (e as Error).message, 'error'); }
+  };
+
+  const runPreview = async () => {
+    if (!sample.trim()) return;
+    try { setPreview(await vaultApi.preview(activeServer.id, sample)); load(); }
+    catch (e) { addToast('Preview failed', (e as Error).message, 'error'); }
+  };
+
+  return (
+    <Section title="Privacy vault" desc="Swap sensitive values for placeholders before anything is sent to Claude, and swap them back in replies and tool calls.">
+      <label className="flex items-center gap-2 text-sm text-cream-200">
+        <input type="checkbox" checked={!!s?.redactionEnabled} onChange={(e) => patchSettings({ redactionEnabled: e.target.checked } as never)} />
+        Redact sensitive values before sending to Claude
+      </label>
+      <label className="flex items-center gap-2 text-sm text-cream-200 mt-1.5">
+        <input type="checkbox" checked={s?.autoDetect !== false} disabled={!s?.redactionEnabled}
+          onChange={(e) => patchSettings({ autoDetect: e.target.checked } as never)} />
+        Also auto-detect emails, phone numbers, IBANs and card numbers
+      </label>
+
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <input className={input} placeholder="Value to protect (e.g. a customer number)" value={value} onChange={(e) => setValue(e.target.value)} />
+        <input className={input} placeholder="Label (optional, for you)" value={label} onChange={(e) => setLabel(e.target.value)} />
+      </div>
+      <Button onClick={add} disabled={busy || !value.trim()}>Add to vault</Button>
+
+      {entries.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-center gap-2 text-xs bg-ink-850 rounded-lg px-2.5 py-1.5">
+              <code className="text-clay">{e.token}</code>
+              <span className="text-ink-500">←</span>
+              <span className="text-cream-300 font-mono">{e.preview}</span>
+              {e.label && <span className="text-ink-500 truncate">· {e.label}</span>}
+              {e.auto && <span className="text-[10px] uppercase text-ink-600 border border-ink-700 rounded px-1">auto</span>}
+              <span className="ml-auto text-ink-500">{e.hits}×</span>
+              <button onClick={() => remove(e.id)} className="text-ink-500 hover:text-red-400">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 border-t border-ink-700 pt-3">
+        <p className="text-xs text-ink-500 mb-1.5">Check what Claude would actually receive:</p>
+        <div className="flex gap-1.5">
+          <input className={input} placeholder="Paste a sample message…" value={sample}
+            onChange={(e) => setSample(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runPreview(); }} />
+          <button onClick={runPreview} disabled={!sample.trim()} className="text-xs px-3 py-1.5 rounded-lg bg-ink-750 border border-ink-600 text-cream-200 hover:border-clay disabled:opacity-50 shrink-0">Preview</button>
+        </div>
+        {preview && (
+          <div className="mt-2 space-y-1 text-xs">
+            <div><span className="text-ink-500">Claude sees: </span><span className="text-cream-100 font-mono break-all">{preview.redacted}</span></div>
+            <div><span className="text-ink-500">You see back: </span><span className="text-cream-300 break-all">{preview.restored}</span></div>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-ink-500 mt-3">
+        This removes what it can <span className="text-cream-300">recognise</span> — vault entries and well-formed identifiers. Sensitive text it has never been told about (a name in a paragraph, an address, case details) still reaches Claude. Treat it as a filter for known values, not a guarantee.
+      </p>
+    </Section>
   );
 }
 
