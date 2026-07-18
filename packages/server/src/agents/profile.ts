@@ -39,7 +39,11 @@ function cap(agent: Agent, want: AgentModelClass): AgentModelClass {
   return RANK[want] <= RANK[agent.modelClass] ? want : agent.modelClass;
 }
 
-const DEFAULT_HISTORY = 20;
+// 10, not 20. The transcript is ~85 tokens/message, so the second ten cost
+// ~850 tokens on every conversational run to buy recall that is almost always
+// already dead — by message 11 the thread has usually moved on, and anything
+// durable should have been captured to the Brain instead.
+const DEFAULT_HISTORY = 10;
 
 export function resolveRunProfile(agent: Agent, trigger: AgentTrigger): RunProfile {
   // Agent-to-agent: the delegation prompt is the full brief. Cheapest sensible

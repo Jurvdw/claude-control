@@ -38,7 +38,7 @@ describe('resolveRunProfile', () => {
   it('keeps full context and settings for conversation', () => {
     for (const t of ['mention', 'dm', 'manual'] as const) {
       const p = resolveRunProfile(agent('OPUS'), trig(t));
-      expect(p.historyLimit).toBe(20);
+      expect(p.historyLimit).toBe(10);
       expect(p.modelClass).toBe('OPUS');
       expect(p.effort).toBe('HIGH');
     }

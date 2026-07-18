@@ -140,6 +140,11 @@ export class SubscriptionProvider implements LLMProvider {
               ? { behavior: 'allow' as const, updatedInput: toolInput }
               : { behavior: 'deny' as const, message: 'Only Claude Control + mounted MCP tools are permitted.' },
           settingSources: [],
+          // Skills are a Claude Code feature our agents never use — they work
+          // through our own MCP tools. Omitting this option does NOT disable
+          // them (the CLI's defaults still apply and their listing rides in the
+          // prompt), so turn them off explicitly.
+          skills: [],
           maxTurns: params.maxTurns ?? 8,
           effort: SUB_EFFORT[params.effort],
         },
