@@ -78,6 +78,10 @@ function startBackend() {
       EMBEDDED_PG: 'true',
       PG_DATA_DIR: path.join(userData, 'pg'),
       STORAGE_LOCAL_DIR: path.join(userData, 'storage'),
+      // The backend's stdout is piped to this process, which as a packaged
+      // Windows GUI app has no console — so without a file the logs are simply
+      // lost. Give it somewhere durable to write.
+      LOG_DIR: path.join(userData, 'logs'),
       // This is a self-hosted, single-user desktop app → unlock Claude subscription mode.
       SELF_HOSTED: 'true',
       // Per-install secrets (stable for this machine, unique per install).
