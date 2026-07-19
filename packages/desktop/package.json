@@ -1,6 +1,6 @@
 {
   "name": "@cc/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Claude Control desktop shell (Electron).",
   "author": "Claude Control",
@@ -24,6 +24,7 @@
     "productName": "Claude Control",
     "electronVersion": "33.4.11",
     "npmRebuild": false,
+    "compression": "normal",
     "directories": {
       "output": "release"
     },
@@ -67,9 +68,10 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
       "shortcutName": "Claude Control"
     },
     "mac": {

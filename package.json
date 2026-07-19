@@ -1,6 +1,6 @@
 {
   "name": "claude-control",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Claude Control — a Discord-style AI control center for building and orchestrating Claude-powered agents.",
   "workspaces": [
