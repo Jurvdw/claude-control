@@ -7,8 +7,10 @@ import { registerTool } from './registry.js';
 // only built-in tool we re-enable). The registration here is what makes it
 // appear in the agent tool picker and in enabledTools.
 //
-// API-key mode does NOT wire this yet: execute() below is the fallback, and it
-// tells the model plainly rather than pretending to have searched.
+// Both providers wire it: subscription → the Agent SDK's native WebSearch,
+// API key → Anthropic's server-side web_search tool (see anthropic.ts). The
+// execute() below is therefore unreachable on both paths and exists only so a
+// future provider without search degrades honestly instead of hallucinating.
 registerTool({
   name: 'web_search',
   description: 'Search the web for current information (Anthropic server-side web search).',

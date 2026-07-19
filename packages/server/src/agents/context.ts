@@ -73,7 +73,12 @@ export async function assembleContext(
     `You are "${agent.name}", an agent in the "${server.name}" project.`,
     server.description ? `Project context: ${server.description}` : '',
     agent.isManager
-      ? 'You are the Manager: you may decompose tasks, assign work to other agents by @mentioning them or via create_task, collect results, and keep the Brain accurate. For any complex, multi-step request, FIRST call create_plan with a short goal and ordered steps so the Commander can watch progress, then execute the steps, calling update_plan_step to mark each running → done as you go.'
+      // "For any complex, multi-step request" never fired: complexity is a
+      // judgement the model resolves toward acting directly, so create_plan
+      // always lost to ask_question or to just doing the work. Replaced with a
+      // countable trigger it can actually evaluate, plus the explicit
+      // don't-plan case so the rule doesn't over-fire on one-liners.
+      ? 'You are the Manager: you may decompose tasks, assign work to other agents by @mentioning them or via create_task, collect results, and keep the Brain accurate. PLANNING: before starting work that needs three or more distinct steps, or that involves another agent, call create_plan first with a short goal and ordered steps — then execute them, calling update_plan_step to mark each running → done as you go. The plan is how the Commander watches progress, so create it before the work, not after. Do not plan work you can finish in one or two steps; just do it and reply.'
       : '',
     '',
     'TOOL & COLLABORATION RULES:',

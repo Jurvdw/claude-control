@@ -184,6 +184,17 @@ export async function runAgent(trigger: AgentTrigger, opts?: { capture?: boolean
       totalCost += estimateCost(result.model, result.usage);
       if (result.text) finalText = result.text;
 
+      // Server-side tools (web_search) run their own loop inside the model
+      // call. When that loop hits its iteration cap the turn comes back with
+      // stop_reason 'pause_turn' and NO tool_uses — breaking here would return
+      // a half-finished answer. Echo the assistant turn back and let the
+      // server resume where it left off (no extra user message: the API sees
+      // the trailing server_tool_use and continues on its own).
+      if (result.stopReason === 'pause_turn') {
+        messages.push({ role: 'assistant', content: result.content });
+        continue;
+      }
+
       if (result.toolUses.length === 0) break;
 
       // Append the assistant turn, then execute tools → tool_result user turn.

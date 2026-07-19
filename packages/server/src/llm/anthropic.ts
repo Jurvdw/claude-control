@@ -47,6 +47,30 @@ function cacheLastBlock(msg: LLMMessage): unknown {
   };
 }
 
+// `web_search` in our registry is a capability flag, not a client-side tool:
+// search runs server-side inside the model call. Granting it swaps the flag for
+// Anthropic's real server tool, which the model then calls without ever
+// reaching our execute().
+//
+// The `_20260209` variant (dynamic filtering) needs Opus 4.6+/Sonnet 4.6+;
+// Haiku 4.5 predates it and must use the basic variant, so pick by model.
+function webSearchTool(model: string): Record<string, unknown> {
+  const type = model.startsWith('claude-haiku') ? 'web_search_20250305' : 'web_search_20260209';
+  return { type, name: 'web_search', max_uses: 5 };
+}
+
+/** Build the request `tools` array: our client tools (cached) + server tools. */
+export function buildToolsParam(tools: LLMToolSpec[], model: string): unknown[] {
+  const ours = tools.filter((t) => t.name !== 'web_search');
+  const wantsSearch = ours.length !== tools.length;
+  // cache_control belongs on the last CLIENT tool: the server tool is appended
+  // after it, but server-tool definitions are fixed strings, so the prefix
+  // stays byte-stable and the breakpoint still covers everything before it.
+  const out: unknown[] = ours.length ? withToolsCache(ours) : [];
+  if (wantsSearch) out.push(webSearchTool(model));
+  return out;
+}
+
 // API-key backend (default, stable, sellable). BYOK — the key belongs to the
 // account and is decrypted just-in-time before constructing this client.
 export class AnthropicApiKeyProvider implements LLMProvider {
@@ -91,7 +115,10 @@ export class AnthropicApiKeyProvider implements LLMProvider {
       output_config: { effort },
     };
     if (params.thinking) req.thinking = { type: 'adaptive' };
-    if (params.tools?.length) req.tools = withToolsCache(params.tools);
+    if (params.tools?.length) {
+      const tools = buildToolsParam(params.tools, model);
+      if (tools.length) req.tools = tools;
+    }
 
     try {
       const stream = this.client.messages.stream(req as never);
@@ -123,6 +150,15 @@ export class AnthropicApiKeyProvider implements LLMProvider {
           content.push({ type: 'tool_use', ...tu });
           toolUses.push(tu);
           onEvent?.({ type: 'tool_use', ...tu });
+        } else {
+          // Server-tool blocks (server_tool_use, web_search_tool_result). We
+          // don't model these, but they MUST be echoed back verbatim when
+          // resuming a pause_turn — dropping them breaks the resume. Nothing
+          // downstream reads them; block walkers key off `type` and skip.
+          content.push(block as unknown as LLMContentBlock);
+          if (block.type === 'server_tool_use') {
+            onEvent?.({ type: 'status', line: 'Searching the web…' });
+          }
         }
       }
 

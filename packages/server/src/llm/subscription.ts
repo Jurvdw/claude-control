@@ -117,6 +117,7 @@ export class SubscriptionProvider implements LLMProvider {
     let text = '';
     let costUsd = 0;
     const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const turnUsage: Array<{ in: number; out: number; cacheR: number; cacheW: number }> = [];
 
     try {
       const q = query({
@@ -169,6 +170,20 @@ export class SubscriptionProvider implements LLMProvider {
             }
           }
         } else if (type === 'assistant') {
+          // Per-REQUEST usage. The final `result` message reports a total, which
+          // is where a per-turn cache read would disappear: turn 1 writes the
+          // cache and turns 2..n read it, but if the SDK's total only carries
+          // the last turn (or resets), cacheR reads 0 for the whole run even
+          // though caching worked. Log each turn to tell those apart.
+          const turn = (msg.message as { usage?: Record<string, number> })?.usage;
+          if (turn) {
+            turnUsage.push({
+              in: turn.input_tokens ?? 0,
+              out: turn.output_tokens ?? 0,
+              cacheR: turn.cache_read_input_tokens ?? 0,
+              cacheW: turn.cache_creation_input_tokens ?? 0,
+            });
+          }
           const content = (msg.message as { content?: unknown[] })?.content ?? (msg as { content?: unknown[] }).content ?? [];
           for (const block of content as Array<{ type: string; text?: string; thinking?: string; name?: string }>) {
             if (block.type === 'text' && block.text) {
@@ -209,6 +224,30 @@ export class SubscriptionProvider implements LLMProvider {
     } catch (err) {
       throw normalizeError(err);
     }
+
+    // Settle where the tokens actually went. The `result` total and the sum of
+    // per-turn usage should agree; when they don't, the total is the unreliable
+    // one (it has been observed to carry only the final turn), so prefer the
+    // per-turn sum for cache figures — otherwise a working cache reports 0.
+    const perTurn = turnUsage.reduce(
+      (a, t) => ({
+        inputTokens: a.inputTokens + t.in,
+        outputTokens: a.outputTokens + t.out,
+        cacheReadTokens: a.cacheReadTokens + t.cacheR,
+        cacheWriteTokens: a.cacheWriteTokens + t.cacheW,
+      }),
+      { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    );
+    if (perTurn.cacheReadTokens > usage.cacheReadTokens) {
+      logger.info('cache: per-turn sum exceeds result total — using per-turn', {
+        resultCacheR: usage.cacheReadTokens,
+        perTurnCacheR: perTurn.cacheReadTokens,
+        turns: turnUsage.length,
+      });
+      usage.cacheReadTokens = perTurn.cacheReadTokens;
+      usage.cacheWriteTokens = Math.max(usage.cacheWriteTokens, perTurn.cacheWriteTokens);
+    }
+    logger.debug('cache: per-turn usage', { turns: turnUsage, result: usage });
 
     if (lastRateLimit && (lastRateLimit.status === 'allowed_warning' || (lastRateLimit.utilization ?? 0) >= 0.8)) {
       logger.warn('subscription quota running low', {
