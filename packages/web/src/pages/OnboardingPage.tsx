@@ -101,6 +101,7 @@ export default function OnboardingPage() {
         const s = await keysApi.setupTokenStatus();
         if (sessionIdRef.current !== mySession) return; // cancelled/restarted while this request was in flight
         if (s.status === 'success') {
+          sessionIdRef.current += 1; // this session is now handled — a sibling in-flight tick must not also act
           clearInterval(interval);
           try {
             await finishOnboarding();
@@ -109,6 +110,7 @@ export default function OnboardingPage() {
             setSetupError((err as Error).message);
           }
         } else if (s.status === 'error') {
+          sessionIdRef.current += 1; // same reason
           clearInterval(interval);
           setSetupState('error');
           setSetupError(s.error || 'Sign-in failed. Try again, or paste a token manually.');
