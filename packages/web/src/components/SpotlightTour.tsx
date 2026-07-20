@@ -57,13 +57,29 @@ export default function SpotlightTour({ view, onChangeView }: Props) {
     ? { top: rect.top - PADDING, left: rect.left - PADDING, width: rect.width + PADDING * 2, height: rect.height + PADDING * 2 }
     : null;
 
-  // Card position: to the right of the cutout if there's room, else below it;
-  // centered on screen when there is no target (welcome/closing steps).
-  const cardStyle: React.CSSProperties = cutout
-    ? cutout.left + cutout.width + 320 < window.innerWidth
-      ? { top: cutout.top, left: cutout.left + cutout.width + 16 }
-      : { top: cutout.top + cutout.height + 16, left: Math.max(16, cutout.left) }
-    : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+  // Card position: to the right of the cutout if there's room, else below it,
+  // else above it; centered on screen when there is no target (welcome/closing
+  // steps). The composer target spans nearly the full width at the very bottom
+  // of the window, so "below" alone would push the card entirely off-screen —
+  // clamp against both viewport edges and fall back to "above" when there's no
+  // room below (CARD_HEIGHT is an estimate: exact height depends on copy
+  // length, but the clamp keeps it on-screen even if the estimate is off).
+  const CARD_WIDTH = 320;
+  const CARD_HEIGHT = 220;
+  const MARGIN = 16;
+  let cardStyle: React.CSSProperties;
+  if (!cutout) {
+    cardStyle = { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+  } else if (cutout.left + cutout.width + MARGIN + CARD_WIDTH < window.innerWidth) {
+    cardStyle = {
+      top: Math.min(Math.max(MARGIN, cutout.top), window.innerHeight - CARD_HEIGHT - MARGIN),
+      left: cutout.left + cutout.width + MARGIN,
+    };
+  } else if (cutout.top + cutout.height + MARGIN + CARD_HEIGHT < window.innerHeight) {
+    cardStyle = { top: cutout.top + cutout.height + MARGIN, left: Math.max(MARGIN, cutout.left) };
+  } else {
+    cardStyle = { top: Math.max(MARGIN, cutout.top - CARD_HEIGHT - MARGIN), left: Math.max(MARGIN, cutout.left) };
+  }
 
   return (
     <div className="fixed inset-0 z-[60]" role="dialog" aria-label="Product tour">

@@ -121,4 +121,24 @@ test.describe('Claude Control desktop', () => {
     // What Claude would receive must not contain the real value.
     await expect(page.locator('main')).toContainText('Bel <DATA_1> vandaag', { timeout: 15_000 });
   });
+
+  test('walks through the first-run tour', async ({ page }) => {
+    await signUp(page);
+    await createWorkspace(page, 'Tour Workspace', { dismissTour: false });
+
+    // 7 steps: welcome, chat, brain, tasks, workflows, triggers, closing.
+    for (let i = 0; i < 6; i++) {
+      await page.getByRole('button', { name: /^next$/i }).click();
+    }
+    await page.getByRole('button', { name: /^finish$/i }).click();
+
+    // onboardedAt must actually be persisted, not just inferred from the UI.
+    const me = await page.evaluate(() => fetch('/auth/me', { credentials: 'include' }).then((r) => r.json()));
+    expect(me.user.onboardedAt).not.toBeNull();
+
+    // And the tour must not reappear after a reload.
+    await page.reload();
+    await page.getByRole('heading', { name: /# general/ }).waitFor({ timeout: 60_000 });
+    await expect(page.getByText("That's the core loop")).toHaveCount(0);
+  });
 });

@@ -136,7 +136,7 @@ export async function signUp(page: Page, email = `e2e${Date.now()}@test.local`) 
 }
 
 /** Create the first workspace and wait for the chat view. */
-export async function createWorkspace(page: Page, name = 'E2E Workspace') {
+export async function createWorkspace(page: Page, name = 'E2E Workspace', opts: { dismissTour?: boolean } = {}) {
   // Creation lives behind the workspace switcher, and the field commits on
   // Enter — there is no submit button.
   await page.getByRole('button', { name: /workspace/i }).first().click();
@@ -146,4 +146,15 @@ export async function createWorkspace(page: Page, name = 'E2E Workspace') {
   await field.fill(name);
   await field.press('Enter');
   await page.getByRole('heading', { name: /# general/ }).waitFor({ timeout: 60_000 });
+
+  // Creating a workspace triggers the first-run tour (see TourContext) for a
+  // user who has never completed onboarding — every e2e user is exactly that.
+  // Dismiss it by default so the rest of the suite sees the real app; the
+  // dedicated tour test opts out via { dismissTour: false } to exercise it.
+  if (opts.dismissTour !== false) {
+    const skipTour = page.getByRole('button', { name: /skip tour/i });
+    if (await skipTour.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await skipTour.click();
+    }
+  }
 }
