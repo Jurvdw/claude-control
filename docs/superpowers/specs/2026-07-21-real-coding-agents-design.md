@@ -42,12 +42,18 @@ any subset:
 
 | Tool | Kind |
 |---|---|
-| `read_file` | read-only |
-| `list_dir` | read-only |
-| `search_code` | read-only (grep-style) |
-| `write_file` | mutating |
-| `edit_file` | mutating |
-| `run_bash` | shell, cwd = the workspace's project folder |
+| `project_read_file` | read-only |
+| `project_list_dir` | read-only |
+| `project_search` | read-only (grep-style) |
+| `project_write_file` | mutating |
+| `project_edit_file` | mutating |
+| `project_run_bash` | shell, cwd = the workspace's project folder |
+
+Named with a `project_` prefix rather than the more obvious `read_file`/
+`write_file`: `read_file` already exists (`tools/files.ts`) and means
+something different — reading a previously uploaded/created file from the
+app's own storage, not the real filesystem. The prefix avoids that
+collision and keeps the six grouped together in the checkbox UI.
 
 Deliberately excluded: the SDK's `Task` tool (spawns nested sub-sessions,
 which would collide with this app's own multi-agent/mention model) and
@@ -92,8 +98,9 @@ options are built (currently `tools: wantsWebSearch ? ['WebSearch'] : []`):
   The agent simply doesn't have coding tools yet; no error surfaces mid-run.
 - If `projectDir` is set: for each of the six canonical names the agent has
   enabled, add the matching SDK built-in to the `tools` array:
-  `read_file`→`Read`, `list_dir`→`Glob`, `search_code`→`Grep`,
-  `write_file`→`Write`, `edit_file`→`Edit`, `run_bash`→`Bash`. Also set
+  `project_read_file`→`Read`, `project_list_dir`→`Glob`,
+  `project_search`→`Grep`, `project_write_file`→`Write`,
+  `project_edit_file`→`Edit`, `project_run_bash`→`Bash`. Also set
   `cwd: projectDir` on the SDK options.
 - Extend `canUseTool` (currently a strict allowlist of `mcp__*` +
   `WebSearch`) with a branch permitting exactly the built-ins the agent has
@@ -116,7 +123,7 @@ one. Each tool's `execute(input, ctx)`:
 3. Resolves the tool's path argument(s) against `projectDir` and performs
    the real operation: `node:fs/promises` for
    read/write/edit/list/search, `node:child_process` (`spawn`, no shell
-   string interpolation) for `run_bash`, with `cwd: projectDir`.
+   string interpolation) for `project_run_bash`, with `cwd: projectDir`.
 4. None of the six set `requiresApproval` — consistent with §1's autonomy
    decision, and a deliberate contrast with `run_code` (which does require
    approval, being a different, more experimental tool with different
@@ -126,8 +133,9 @@ one. Each tool's `execute(input, ctx)`:
 
 `packages/server/src/db/seed.ts`'s `coder` template's `enabledTools` changes
 from `[...DEFAULT_TOOLS, ...DOC_TOOLS, 'run_code']` to
-`[...DEFAULT_TOOLS, 'read_file', 'list_dir', 'search_code', 'write_file',
-'edit_file', 'run_bash']` — applies to newly-created workspaces only.
+`[...DEFAULT_TOOLS, 'project_read_file', 'project_list_dir',
+'project_search', 'project_write_file', 'project_edit_file',
+'project_run_bash']` — applies to newly-created workspaces only.
 Existing agents in existing workspaces keep whatever `enabledTools` they
 already have; nothing is retroactively changed. Anyone can opt any agent
 into any subset of the six tools via the existing checkbox UI regardless of
@@ -142,7 +150,7 @@ Two different things are true at once, and both matter:
   so an agent can't be accidentally (or deliberately) pointed at modifying
   the app that's running it.
 - **The fence does not sandbox what happens inside the folder.** Once
-  `run_bash` is enabled, it is real, unrestricted shell access with `cwd`
+  `project_run_bash` is enabled, it is real, unrestricted shell access with `cwd`
   set to the project folder — nothing stops a command from using `../` or an
   absolute path to reach outside it, exactly as nothing stops you from doing
   the same in a real terminal opened in that folder. This is the direct
@@ -176,7 +184,7 @@ Two different things are true at once, and both matter:
   pure-function-with-mocked-deps convention — no route-level tests, per
   this codebase's standing test style.
 - Subscription-mode wiring (the `tools` array + `canUseTool` translation)
-  gets logic-level unit tests where feasible (e.g. "agent with `run_bash`
+  gets logic-level unit tests where feasible (e.g. "agent with `project_run_bash`
   enabled produces a `tools` array containing `Bash`"); the live SDK
   round-trip (an agent actually editing a real file) is manually verified,
   matching how `run_code`/`send_email`/the setup-token OAuth flow were each
@@ -190,6 +198,6 @@ Two different things are true at once, and both matter:
 - Multiple project folders per agent, or per-agent folder overrides —
   one folder per workspace only.
 - Any change to the existing sandboxed `run_code` tool.
-- Git-specific tooling beyond what `run_bash` already provides — `git` is
-  just a shell command an agent can already run once `run_bash` is enabled.
+- Git-specific tooling beyond what `project_run_bash` already provides — `git` is
+  just a shell command an agent can already run once `project_run_bash` is enabled.
 - The SDK's `Task` and `TodoWrite` built-ins.
