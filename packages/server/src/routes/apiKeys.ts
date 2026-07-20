@@ -7,9 +7,11 @@ import {
   validateSubscriptionToken,
   subscriptionAllowed,
   claudeLoginDetected,
+  persistSubscriptionToken,
   SUBSCRIPTION_LABEL,
   AMBIENT_MARKER,
 } from '../llm/index.js';
+import { startSetupToken, getSetupTokenStatus, cancelSetupToken } from '../llm/setupTokenFlow.js';
 import { requireAuth } from '../auth/middleware.js';
 import { env } from '../config/env.js';
 
@@ -58,17 +60,21 @@ apiKeysRouter.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'An API key is required.' });
     }
 
+    // Real subscription tokens (manual paste here, or the in-app setup-token
+    // flow below) share one persistence path — see llm/index.ts.
+    if (isSubscription && !ambient) {
+      const { apiKey, valid, error } = await persistSubscriptionToken(req.user!.id, key);
+      return res.status(201).json({ key: apiKey, valid, error });
+    }
+
     let validation: { ok: boolean; error?: string };
     let ciphertext: string;
     let last4: string;
-    if (isSubscription && ambient) {
+    if (isSubscription) {
+      // ambient login
       validation = await validateSubscriptionToken(undefined);
       ciphertext = encrypt(AMBIENT_MARKER);
       last4 = 'login';
-    } else if (isSubscription) {
-      validation = await validateSubscriptionToken(key);
-      ciphertext = encrypt(key);
-      last4 = key.slice(-4);
     } else {
       validation = await validateKey(key);
       ciphertext = encrypt(key);
@@ -104,6 +110,30 @@ apiKeysRouter.delete('/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ── In-app subscription setup-token flow ─────────────────────────────────────
+// The app bundles the real Claude CLI binary (for the Agent SDK), so it can
+// run `claude setup-token` itself instead of asking the user to open a
+// terminal. The only thing that still leaves the app is the OAuth browser tab
+// — unavoidable for sign-in, but not a terminal.
+
+apiKeysRouter.post('/subscription/setup-token/start', (req, res) => {
+  if (!subscriptionAllowed) {
+    return res.status(403).json({ error: 'Subscription mode is only available in the self-hosted desktop app.' });
+  }
+  startSetupToken(req.user!.id);
+  return res.status(202).json({ ok: true });
+});
+
+apiKeysRouter.get('/subscription/setup-token/status', (req, res) => {
+  const status = getSetupTokenStatus(req.user!.id);
+  return res.json(status ?? { status: 'idle' });
+});
+
+apiKeysRouter.post('/subscription/setup-token/cancel', (req, res) => {
+  cancelSetupToken(req.user!.id);
+  return res.json({ ok: true });
 });
 
 // Provider status (no-auth required per contract — but we expose it authed for simplicity)
