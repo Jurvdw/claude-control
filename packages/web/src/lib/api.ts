@@ -42,6 +42,7 @@ export const auth = {
   register: (email: string, password: string, displayName: string) =>
     post<{ user: User }>('/auth/register', { email, password, displayName }),
   logout: () => post<{ ok: boolean }>('/auth/logout'),
+  completeOnboarding: () => post<{ user: User }>('/auth/onboarding-complete'),
 };
 
 // API Keys
@@ -54,6 +55,10 @@ export const apiKeys = {
     post<{ key: ApiKey; valid: boolean; error?: string }>('/api-keys', { kind: 'subscription', useExistingLogin: true }),
   delete: (id: string) => del<{ ok: boolean }>(`/api-keys/${id}`),
   providerStatus: () => get<ProviderStatus>('/provider/status'),
+  startSetupToken: () => post<{ ok: boolean }>('/api-keys/subscription/setup-token/start'),
+  setupTokenStatus: () =>
+    get<{ status: 'idle' | 'waiting' | 'success' | 'error'; error?: string }>('/api-keys/subscription/setup-token/status'),
+  cancelSetupToken: () => post<{ ok: boolean }>('/api-keys/subscription/setup-token/cancel'),
 };
 
 // Servers

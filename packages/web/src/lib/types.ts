@@ -14,6 +14,7 @@ export interface User {
   email: string;
   displayName: string;
   createdAt: string;
+  onboardedAt: string | null;
 }
 
 export interface ServerSettings {
