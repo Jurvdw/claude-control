@@ -279,4 +279,6 @@ CREATE TABLE IF NOT EXISTS "mcp_servers" (
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "mcp_servers_serverId_name_key" ON "mcp_servers"("serverId", "name");
+
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboardedAt" TIMESTAMP(3);
 `;

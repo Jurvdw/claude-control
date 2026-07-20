@@ -89,7 +89,21 @@ authRouter.get('/me', requireAuth, async (req, res) => {
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      onboardedAt: user.onboardedAt,
       createdAt: user.createdAt,
     },
   });
+});
+
+authRouter.post('/onboarding-complete', requireAuth, async (req, res, next) => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { onboardedAt: new Date() },
+      select: { id: true, email: true, displayName: true, avatarUrl: true, onboardedAt: true, createdAt: true },
+    });
+    return res.json({ user });
+  } catch (err) {
+    next(err);
+  }
 });
