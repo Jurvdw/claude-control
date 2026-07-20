@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { prisma } from '../lib/prisma.js';
-import { decrypt } from '../lib/crypto.js';
+import { decrypt, encrypt } from '../lib/crypto.js';
 import { env } from '../config/env.js';
 import { AnthropicApiKeyProvider } from './anthropic.js';
 import { SubscriptionProvider } from './subscription.js';
@@ -77,4 +77,29 @@ export async function validateSubscriptionToken(token?: string): Promise<{ ok: b
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
+}
+
+/**
+ * Validate and persist a real subscription token as this user's credential.
+ * Shared by the manual-paste flow (routes/apiKeys.ts) and the in-app
+ * setup-token flow (llm/setupTokenFlow.ts) so both save identically. Not used
+ * for the ambient-login case (routes/apiKeys.ts keeps that inline — it has no
+ * real token to validate/store the same way).
+ */
+export async function persistSubscriptionToken(
+  userId: string,
+  token: string,
+): Promise<{ apiKey: { id: string; label: string; last4: string; valid: boolean; createdAt: Date } | null; valid: boolean; error?: string }> {
+  const validation = await validateSubscriptionToken(token);
+  const apiKey = await prisma.apiKey.create({
+    data: {
+      userId,
+      label: SUBSCRIPTION_LABEL,
+      ciphertext: encrypt(token),
+      last4: token.slice(-4),
+      valid: validation.ok,
+    },
+    select: { id: true, label: true, last4: true, valid: true, createdAt: true },
+  });
+  return { apiKey, valid: validation.ok, error: validation.error };
 }
