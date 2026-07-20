@@ -7,6 +7,7 @@ import {
   getSetupTokenStatus,
   cancelSetupToken,
 } from '../src/llm/setupTokenFlow.js';
+import { persistSubscriptionToken } from '../src/llm/index.js';
 
 vi.mock('../src/llm/index.js', () => ({
   persistSubscriptionToken: vi.fn(async (_userId: string, token: string) =>
@@ -92,5 +93,25 @@ describe('setup-token session orchestration', () => {
     startSetupToken('user-1', () => second as never);
     expect(first.kill).toHaveBeenCalled();
     expect(getSetupTokenStatus('user-1')).toEqual({ status: 'waiting' });
+  });
+
+  it('ignores a stale exit event from a cancelled/superseded session', async () => {
+    const first = new FakeChild();
+    startSetupToken('user-1', () => first as never);
+    const second = new FakeChild();
+    startSetupToken('user-1', () => second as never); // supersedes `first`; kills it
+
+    vi.mocked(persistSubscriptionToken).mockClear(); // ignore calls from earlier tests in this file
+
+    // Simulate the real-world race: the OS delivers `first`'s exit event
+    // after it was already killed and replaced by `second`.
+    first.stdout.emit('data', Buffer.from('token: sk-ant-oat01-stale\n'));
+    first.emit('exit', 0);
+    await new Promise((r) => setTimeout(r, 0));
+
+    // `second`'s session must be untouched, and `first`'s stale token must
+    // never reach persistence.
+    expect(getSetupTokenStatus('user-1')).toEqual({ status: 'waiting' });
+    expect(persistSubscriptionToken).not.toHaveBeenCalled();
   });
 });
