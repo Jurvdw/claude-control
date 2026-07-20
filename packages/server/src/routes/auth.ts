@@ -31,7 +31,7 @@ authRouter.post('/register', async (req, res, next) => {
     const passwordHash = await hashPassword(password);
     const user = await prisma.user.create({
       data: { email, passwordHash, displayName },
-      select: { id: true, email: true, displayName: true, avatarUrl: true, createdAt: true },
+      select: { id: true, email: true, displayName: true, avatarUrl: true, onboardedAt: true, createdAt: true },
     });
 
     const sid = await createSession(user.id);
@@ -63,6 +63,7 @@ authRouter.post('/login', async (req, res, next) => {
         email: user.email,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        onboardedAt: user.onboardedAt,
         createdAt: user.createdAt,
       },
     });
