@@ -1,6 +1,6 @@
 {
   "name": "claude-control",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Claude Control desktop shell (Electron).",
   "author": "Claude Control",
