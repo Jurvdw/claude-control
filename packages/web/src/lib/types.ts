@@ -24,6 +24,7 @@ export interface ServerSettings {
   hopLimit: number;
   maxConcurrent: number;
   proactiveDefault: boolean;
+  projectDir?: string;
 }
 
 export interface Server {

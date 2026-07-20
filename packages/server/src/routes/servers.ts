@@ -4,6 +4,7 @@ import { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../auth/middleware.js';
 import { requireServerMember } from '../auth/guards.js';
+import { checkProjectDir } from '../lib/mcpFence.js';
 
 export const serversRouter = Router();
 
@@ -146,6 +147,12 @@ serversRouter.patch(
     try {
       const body = patchServerSchema.safeParse(req.body);
       if (!body.success) return res.status(400).json({ error: 'invalid body' });
+
+      const nextProjectDir = body.data.settings?.projectDir;
+      if (typeof nextProjectDir === 'string' && nextProjectDir.trim()) {
+        const fenceError = checkProjectDir(nextProjectDir);
+        if (fenceError) return res.status(400).json({ error: fenceError });
+      }
 
       const server = await prisma.server.findUnique({ where: { id: req.params.serverId } });
       if (!server) return res.status(404).json({ error: 'not found' });

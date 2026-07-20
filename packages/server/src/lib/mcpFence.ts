@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const serverRoot = path.resolve(fileURLToPath(import.meta.url), '../../..'); // packages/server | resources/server
 
-function protectedRoots(): string[] {
+export function protectedRoots(): string[] {
   const roots = [
     serverRoot, // the backend itself (src/dist)
     path.resolve(serverRoot, '..'), // repo root in dev, resources/ in the installed app
@@ -29,7 +29,7 @@ function protectedRoots(): string[] {
   return roots.map((r) => path.resolve(r));
 }
 
-function contains(parent: string, child: string): boolean {
+export function contains(parent: string, child: string): boolean {
   const rel = path.relative(parent, child);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
@@ -67,6 +67,27 @@ export function checkMcpPaths(cfg: { command?: string | null; args?: unknown; en
       if (contains(root, resolved) || contains(resolved, root)) {
         return `That path (${raw}) would give the MCP server access to Claude Control's own files. Pick a specific folder outside the app — agents can't be allowed to modify the app they run in. If you need a new ability, ask an agent to use request_capability instead.`;
       }
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns an error message if `dir` would put a workspace's project folder
+ * inside (or around) the app's own install/source/data directory, else null.
+ * Same threat model as checkMcpPaths, applied to a plain directory path
+ * instead of an MCP server's command/args/env.
+ */
+export function checkProjectDir(dir: string): string | null {
+  let resolved: string;
+  try {
+    resolved = path.resolve(dir);
+  } catch {
+    return `"${dir}" is not a valid path.`;
+  }
+  for (const root of protectedRoots()) {
+    if (contains(root, resolved) || contains(resolved, root)) {
+      return `That folder (${dir}) would give agents access to Claude Control's own files. Pick a project folder outside the app.`;
     }
   }
   return null;
