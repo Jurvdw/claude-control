@@ -121,9 +121,14 @@ one. Each tool's `execute(input, ctx)`:
    rather than throwing — same graceful-degradation shape the rest of this
    codebase uses for unconfigured integrations (e.g. email).
 3. Resolves the tool's path argument(s) against `projectDir` and performs
-   the real operation: `node:fs/promises` for
-   read/write/edit/list/search, `node:child_process` (`spawn`, no shell
-   string interpolation) for `project_run_bash`, with `cwd: projectDir`.
+   the real operation: `node:fs/promises` for read/write/edit/list/search;
+   `node:child_process`'s `spawn(command, { shell: true, cwd: projectDir })`
+   for `project_run_bash` — `shell: true` is required (a bash tool's whole
+   point is interpreting the model's command string: pipes, `&&`,
+   redirects), and is not an injection risk here the way string-concatenated
+   shell commands are elsewhere: the command is one deliberate, whole
+   parameter the tool exists to run, not built by splicing untrusted
+   fragments into a larger template.
 4. None of the six set `requiresApproval` — consistent with §1's autonomy
    decision, and a deliberate contrast with `run_code` (which does require
    approval, being a different, more experimental tool with different
