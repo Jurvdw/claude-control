@@ -17,12 +17,12 @@ interface Props {
 }
 
 // Primary navigation. Chat expands into the channel list below it.
-const NAV: { key: View; label: string; icon: JSX.Element }[] = [
+const NAV: { key: View; label: string; icon: JSX.Element; tourId?: string }[] = [
   { key: 'chat', label: 'Chat', icon: <IconChat /> },
-  { key: 'brain', label: 'Brain', icon: <IconBrain /> },
-  { key: 'tasks', label: 'Tasks', icon: <IconTasks /> },
-  { key: 'workflows', label: 'Workflows', icon: <IconWorkflows /> },
-  { key: 'triggers', label: 'Triggers', icon: <IconTriggers /> },
+  { key: 'brain', label: 'Brain', icon: <IconBrain />, tourId: 'nav-brain' },
+  { key: 'tasks', label: 'Tasks', icon: <IconTasks />, tourId: 'nav-tasks' },
+  { key: 'workflows', label: 'Workflows', icon: <IconWorkflows />, tourId: 'nav-workflows' },
+  { key: 'triggers', label: 'Triggers', icon: <IconTriggers />, tourId: 'nav-triggers' },
   { key: 'activity', label: 'Activity', icon: <IconActivity /> },
   { key: 'usage', label: 'Usage', icon: <IconUsage /> },
   { key: 'settings', label: 'Settings', icon: <IconSettings /> },
@@ -122,6 +122,7 @@ export default function Sidebar({ view, onSelectView, onSelectChannel, onSelectS
           <div key={item.key}>
             <button
               onClick={() => onSelectView(item.key)}
+              data-tour={item.tourId}
               className={clsx(
                 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
                 view === item.key ? 'bg-ink-750 text-cream-50 font-medium' : 'text-cream-300 hover:bg-ink-800 hover:text-cream-100',

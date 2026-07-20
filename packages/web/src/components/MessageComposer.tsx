@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
 import { useServer } from '../state/ServerContext';
+import { useTour } from '../state/TourContext';
 import { useNotifications } from '../state/NotificationContext';
 import { messages as msgApi, tasks as tasksApi, brain as brainApi, agents as agentsApi, workflows as wfApi, channels as channelsApi, files as filesApi } from '../lib/api';
 import type { View } from '../pages/AppPage';
@@ -68,6 +69,7 @@ const COMMANDS: Command[] = [
 
 export default function MessageComposer({ onOpenAgentModal, onOpenView, onOpenSearch }: Props) {
   const { activeServer, activeChannel, agents, appendMessage, refreshTasks, refreshAgents } = useServer();
+  const { prefillText, advanceOnSend } = useTour();
   const { addToast } = useNotifications();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -148,6 +150,12 @@ export default function MessageComposer({ onOpenAgentModal, onOpenView, onOpenSe
   }, [mention, agents]);
 
   useEffect(() => setMentionIndex(0), [mention?.query]);
+
+  // Seed the composer once when the tour reaches the chat step.
+  useEffect(() => {
+    if (prefillText && text === '') setText(prefillText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillText]);
 
   const selectMention = (item: MentionItem) => {
     if (!mention) return;
@@ -319,6 +327,7 @@ export default function MessageComposer({ onOpenAgentModal, onOpenView, onOpenSe
       await sendPlain(value, pending.length ? pending.map((f) => f.id) : undefined);
       setText('');
       setPending([]);
+      advanceOnSend();
     } catch (e) {
       addToast('Failed to send', (e as Error).message, 'error');
     } finally {
@@ -396,7 +405,7 @@ export default function MessageComposer({ onOpenAgentModal, onOpenView, onOpenSe
         </div>
       )}
 
-      <div className={clsx('flex items-end gap-2 bg-ink-800 border rounded-xl px-3 py-2 transition-colors', 'border-ink-700 focus-within:border-clay')}>
+      <div className={clsx('flex items-end gap-2 bg-ink-800 border rounded-xl px-3 py-2 transition-colors', 'border-ink-700 focus-within:border-clay')} data-tour="composer">
         <input ref={fileRef} type="file" multiple hidden
           onChange={(e) => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
         <button onClick={() => fileRef.current?.click()} title="Attach files"

@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './state/AuthContext';
 import { NotificationProvider } from './state/NotificationContext';
 import { ServerProvider } from './state/ServerContext';
+import { TourProvider } from './state/TourContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
@@ -35,7 +36,9 @@ function Shell() {
         element={
           <RequireAuth>
             <ServerProvider>
-              <AppPage />
+              <TourProvider>
+                <AppPage />
+              </TourProvider>
             </ServerProvider>
           </RequireAuth>
         }

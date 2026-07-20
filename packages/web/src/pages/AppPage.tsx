@@ -14,6 +14,7 @@ import ApprovalsTray from '../components/ApprovalsTray';
 import UpdateWatcher from '../components/UpdateWatcher';
 import AgentCreateModal from '../components/AgentCreateModal';
 import SearchModal from '../components/SearchModal';
+import SpotlightTour from '../components/SpotlightTour';
 
 // Heavy views are code-split so they don't bloat the initial chat bundle
 // (Brain pulls in react-markdown + the graph sim; Usage pulls in charts).
@@ -200,6 +201,7 @@ export default function AppPage() {
 
       {showAgentModal && <AgentCreateModal open onClose={() => setShowAgentModal(false)} />}
       {showApprovals && <ApprovalsTray onClose={() => setShowApprovals(false)} />}
+      <SpotlightTour view={view} onChangeView={setView} />
       <UpdateWatcher />
       {search.open && <SearchModal initialQuery={search.q} onClose={() => setSearch({ open: false, q: '' })} onSelectChannel={onSelectChannel} onSelectView={setView} />}
     </div>
