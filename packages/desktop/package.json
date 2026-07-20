@@ -1,5 +1,5 @@
 {
-  "name": "@cc/desktop",
+  "name": "claude-control",
   "version": "0.1.1",
   "private": true,
   "description": "Claude Control desktop shell (Electron).",
@@ -22,9 +22,6 @@
   "build": {
     "appId": "com.claudecontrol.app",
     "productName": "Claude Control",
-    "extraMetadata": {
-      "name": "claude-control"
-    },
     "electronVersion": "33.4.11",
     "npmRebuild": false,
     "includeSubNodeModules": true,
