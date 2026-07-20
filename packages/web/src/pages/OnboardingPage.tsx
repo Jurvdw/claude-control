@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { apiKeys as keysApi, servers as serversApi } from '../lib/api';
@@ -20,6 +20,7 @@ export default function OnboardingPage() {
   const [setupState, setSetupState] = useState<SetupState>('idle');
   const [setupError, setSetupError] = useState('');
   const [showManualPaste, setShowManualPaste] = useState(false);
+  const handledRef = useRef(false);
 
   useEffect(() => {
     keysApi.providerStatus().then((s) => {
@@ -31,7 +32,8 @@ export default function OnboardingPage() {
   // A workspace is auto-created the moment Claude is connected, by whichever
   // path got there — no separate "create your first workspace" step.
   const finishOnboarding = async () => {
-    const { server } = await serversApi.create(`${user?.displayName ?? 'My'}'s Workspace`);
+    const workspaceName = user?.displayName ? `${user.displayName}'s Workspace` : 'My Workspace';
+    const { server } = await serversApi.create(workspaceName);
     nav(`/${server.id}`);
   };
 
@@ -83,6 +85,7 @@ export default function OnboardingPage() {
   };
 
   const cancelSetup = async () => {
+    handledRef.current = true; // ignore any in-flight/late poll response
     await keysApi.cancelSetupToken().catch(() => {});
     setSetupState('idle');
   };
@@ -90,20 +93,30 @@ export default function OnboardingPage() {
   // Poll while waiting for the user to finish signing in in their browser.
   useEffect(() => {
     if (setupState !== 'waiting') return;
+    handledRef.current = false;
     const interval = setInterval(async () => {
+      if (handledRef.current) return; // already resolved or cancelled — ignore this tick
       try {
         const s = await keysApi.setupTokenStatus();
+        if (handledRef.current) return; // cancelled while this request was in flight
         if (s.status === 'success') {
+          handledRef.current = true;
           clearInterval(interval);
-          await finishOnboarding();
+          try {
+            await finishOnboarding();
+          } catch (err) {
+            setSetupState('error');
+            setSetupError((err as Error).message);
+          }
         } else if (s.status === 'error') {
+          handledRef.current = true;
           clearInterval(interval);
           setSetupState('error');
           setSetupError(s.error || 'Sign-in failed. Try again, or paste a token manually.');
         }
         // 'waiting' / 'idle' → keep polling
       } catch {
-        // transient network hiccup — keep polling rather than failing on one bad request
+        // transient network hiccup fetching status — keep polling rather than failing on one bad request
       }
     }, 1500);
     return () => clearInterval(interval);
@@ -128,7 +141,7 @@ export default function OnboardingPage() {
               Claude subscription
             </TabButton>
           )}
-          <TabButton active={tab === 'apikey'} onClick={() => { setTab('apikey'); setValue(''); setError(''); }}>
+          <TabButton active={tab === 'apikey'} onClick={() => { if (setupState === 'waiting') void cancelSetup(); setTab('apikey'); setValue(''); setError(''); }}>
             API key
           </TabButton>
         </div>
