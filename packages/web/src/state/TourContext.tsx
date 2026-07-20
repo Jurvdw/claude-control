@@ -44,14 +44,12 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [completeOnboarding]);
 
   const next = useCallback(() => {
-    setStepIndex((i) => {
-      if (i + 1 >= TOUR_STEPS.length) {
-        finish();
-        return i;
-      }
-      return i + 1;
-    });
-  }, [finish]);
+    if (stepIndex + 1 >= TOUR_STEPS.length) {
+      finish();
+      return;
+    }
+    setStepIndex((i) => i + 1);
+  }, [stepIndex, finish]);
 
   const skip = useCallback(() => finish(), [finish]);
 
