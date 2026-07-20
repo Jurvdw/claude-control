@@ -22,24 +22,29 @@
   "build": {
     "appId": "com.claudecontrol.app",
     "productName": "Claude Control",
+    "extraMetadata": {
+      "name": "claude-control"
+    },
     "electronVersion": "33.4.11",
     "npmRebuild": false,
+    "includeSubNodeModules": true,
     "compression": "normal",
     "directories": {
       "output": "release"
     },
     "files": [
-      "electron/**/*"
+      "electron/**/*",
+      "staged/server/**/*",
+      "staged/web/**/*"
     ],
-    "extraResources": [
-      {
-        "from": "build/server",
-        "to": "server"
-      },
-      {
-        "from": "build/web/dist",
-        "to": "web/dist"
-      }
+    "asarUnpack": [
+      "staged/server/node_modules/@embedded-postgres/**",
+      "staged/server/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+      "staged/server/node_modules/.prisma/**",
+      "staged/server/node_modules/@prisma/**",
+      "staged/server/node_modules/**/*.node",
+      "staged/server/node_modules/**/*.exe",
+      "staged/server/node_modules/**/*.dll"
     ],
     "asar": true,
     "publish": [

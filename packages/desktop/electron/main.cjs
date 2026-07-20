@@ -25,15 +25,27 @@ let mainWindow = null;
 // Resolve where the backend + web build live, in dev and when packaged.
 function paths() {
   if (app.isPackaged) {
-    // extraResources places these under resources/.
-    const res = process.resourcesPath;
+    // The backend lives INSIDE app.asar. That is deliberate: NSIS costs roughly
+    // 32ms per file (measured — a 19k-file install and uninstall each took ~10
+    // minutes), so shipping the server as ~15k loose files was the single
+    // biggest component of install time. Inside the archive it is one file.
+    //
+    // Native pieces that must exist on disk to be executed or dlopen'd —
+    // Postgres, the Claude binary, the Prisma engine — are listed in
+    // asarUnpack and land in app.asar.unpacked/ alongside it.
+    //
+    // cwd cannot be a path inside the archive, so the child is given the real
+    // unpacked directory instead.
+    const appDir = path.join(process.resourcesPath, 'app.asar', 'staged', 'server');
+    const unpacked = path.join(process.resourcesPath, 'app.asar.unpacked', 'staged', 'server');
     return {
-      serverDir: path.join(res, 'server'),
-      serverEntry: path.join(res, 'server', 'dist', 'index.js'),
+      serverDir: appDir,
+      serverEntry: path.join(appDir, 'dist', 'index.js'),
+      serverCwd: fs.existsSync(unpacked) ? unpacked : process.resourcesPath,
     };
   }
   const serverDir = path.join(__dirname, '..', '..', 'server');
-  return { serverDir, serverEntry: path.join(serverDir, 'dist', 'index.js') };
+  return { serverDir, serverEntry: path.join(serverDir, 'dist', 'index.js'), serverCwd: serverDir };
 }
 
 // Generate + persist a unique encryption key & session secret per install, so
@@ -64,15 +76,19 @@ function getSecrets() {
 }
 
 function startBackend() {
-  const { serverDir, serverEntry } = paths();
+  const { serverEntry, serverCwd } = paths();
   const userData = app.getPath('userData');
   const secrets = getSecrets();
 
-  backend = spawn(process.execPath, [serverEntry], {
-    cwd: serverDir,
+  // Launched via the shim so dependencies that spawn their own binaries
+  // (embedded-postgres, the Claude Agent SDK) resolve them to app.asar.unpacked
+  // instead of a path inside the archive. See server-launcher.cjs.
+  backend = spawn(process.execPath, [path.join(__dirname, 'server-launcher.cjs')], {
+    cwd: serverCwd,
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1', // run the child as plain Node, not an Electron UI
+      CC_SERVER_ENTRY: serverEntry,
       PORT: String(PORT),
       // Keep data + uploads in the per-user app data folder (writable, persistent).
       EMBEDDED_PG: 'true',

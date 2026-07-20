@@ -18,14 +18,17 @@
 //                          with it and was removed alongside.
 //   deleteAppDataOnUninstall: false — uninstalling must never take the user's
 //                          workspace database with it.
-import { rmSync, mkdirSync, cpSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { rmSync, mkdirSync, cpSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const desktopDir = path.resolve(fileURLToPath(import.meta.url), '../..'); // packages/desktop
 const repoRoot = path.resolve(desktopDir, '../..');
-const buildDir = path.join(desktopDir, 'build');
+// NOT 'build/': electron-builder reserves that name for build RESOURCES
+// (icons, installer scripts) and excludes it from the app package, so a
+// server staged there is silently dropped from app.asar.
+const buildDir = path.join(desktopDir, 'staged');
 const stagedServer = path.join(buildDir, 'server');
 const stagedWebDist = path.join(buildDir, 'web', 'dist');
 
@@ -33,23 +36,67 @@ const R = (...p) => path.join(repoRoot, ...p);
 
 /** Recursive byte size, for reporting what the prune actually saved. */
 function dirSize(dir) {
-  let total = 0;
+  return countFiles(dir).bytes;
+}
+
+/** Recursive {files, bytes}. File count is what predicts Windows install time. */
+function countFiles(dir) {
+  let files = 0;
+  let bytes = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) total += dirSize(full);
-    else if (entry.isFile()) total += statSync(full).size;
+    if (entry.isDirectory()) {
+      const sub = countFiles(full);
+      files += sub.files;
+      bytes += sub.bytes;
+    } else if (entry.isFile()) {
+      files += 1;
+      bytes += statSync(full).size;
+    }
   }
-  return total;
+  return { files, bytes };
 }
 
 console.log('› cleaning build dir');
-rmSync(buildDir, { recursive: true, force: true });
+// On Windows this intermittently fails with EBUSY: antivirus and the search
+// indexer hold transient handles on a tree that was just written, and the
+// staged payload is ~15k files, so the window is wide. The handles clear within
+// a second or two — retry rather than failing the whole build.
+for (let attempt = 1; ; attempt++) {
+  try {
+    rmSync(buildDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    break;
+  } catch (err) {
+    if (attempt >= 5) {
+      console.error(`\n✗ could not clean ${buildDir}: ${err.message}`);
+      console.error('  something is holding a handle — close editors/terminals sitting in build/.');
+      process.exit(1);
+    }
+    console.log(`  locked (${err.code}), retrying ${attempt}/4…`);
+    execSync(process.platform === 'win32' ? 'timeout /t 2 /nobreak >nul' : 'sleep 2', { shell: true });
+  }
+}
 mkdirSync(stagedServer, { recursive: true });
 
 console.log('› copying server dist + prisma + package.json');
 cpSync(R('packages/server/dist'), path.join(stagedServer, 'dist'), { recursive: true });
 cpSync(R('packages/server/prisma'), path.join(stagedServer, 'prisma'), { recursive: true });
-cpSync(R('packages/server/package.json'), path.join(stagedServer, 'package.json'));
+// Strip devDependencies and scripts rather than relying on --omit=dev.
+//
+// Install time on Windows is dominated by FILE COUNT, not bytes — ~17k of the
+// staged files are under 16KB, and each one costs an NTFS create plus an
+// antivirus scan. So a dev dependency that survives is expensive out of all
+// proportion to its size.
+//
+// --omit=dev alone was not enough: `prisma` still landed in the tree, and npm
+// HOISTS its transitive deps, so deleting the prisma folder afterwards orphaned
+// effect (2,715 files) and fast-check (946) at the top level — 3,661 files of
+// pure dead weight, none of it imported anywhere in src. Removing the
+// declarations means npm never resolves that subtree at all, orphans included.
+const pkg = JSON.parse(readFileSync(R('packages/server/package.json'), 'utf8'));
+delete pkg.devDependencies;
+delete pkg.scripts;
+writeFileSync(path.join(stagedServer, 'package.json'), JSON.stringify(pkg, null, 2));
 
 console.log('› copying web build');
 mkdirSync(path.dirname(stagedWebDist), { recursive: true });
@@ -87,6 +134,12 @@ for (const rel of ['node_modules/@prisma/engines', 'node_modules/prisma', 'node_
   pruned += before;
 }
 console.log(`  ✓ removed ${(pruned / 1024 / 1024).toFixed(0)} MB`);
+
+// File count is the number that predicts install time on Windows, so report it
+// alongside size — a change that shrinks megabytes but not files will not make
+// installing meaningfully faster, and this makes that visible at build time.
+const counted = countFiles(stagedServer);
+console.log(`  staged payload: ${counted.files} files, ${(counted.bytes / 1024 / 1024).toFixed(0)} MB`);
 
 // The Prisma client is generated code + a native engine; copy the already-
 // generated output from the repo (prisma CLI is a devDep, not installed here).

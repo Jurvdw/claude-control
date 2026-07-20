@@ -18,6 +18,7 @@ packages/server/data/
 data/
 # Electron packaging output
 packages/desktop/build/
+packages/desktop/staged/
 packages/desktop/release/
 packages/desktop/release/
 packages/desktop/test-results/
