@@ -20,7 +20,7 @@ export default function OnboardingPage() {
   const [setupState, setSetupState] = useState<SetupState>('idle');
   const [setupError, setSetupError] = useState('');
   const [showManualPaste, setShowManualPaste] = useState(false);
-  const handledRef = useRef(false);
+  const sessionIdRef = useRef(0);
 
   useEffect(() => {
     keysApi.providerStatus().then((s) => {
@@ -85,7 +85,7 @@ export default function OnboardingPage() {
   };
 
   const cancelSetup = async () => {
-    handledRef.current = true; // ignore any in-flight/late poll response
+    sessionIdRef.current += 1; // invalidate any in-flight/late poll response for this session
     await keysApi.cancelSetupToken().catch(() => {});
     setSetupState('idle');
   };
@@ -93,14 +93,14 @@ export default function OnboardingPage() {
   // Poll while waiting for the user to finish signing in in their browser.
   useEffect(() => {
     if (setupState !== 'waiting') return;
-    handledRef.current = false;
+    sessionIdRef.current += 1;
+    const mySession = sessionIdRef.current;
     const interval = setInterval(async () => {
-      if (handledRef.current) return; // already resolved or cancelled — ignore this tick
+      if (sessionIdRef.current !== mySession) return; // a newer session started, or this one was cancelled
       try {
         const s = await keysApi.setupTokenStatus();
-        if (handledRef.current) return; // cancelled while this request was in flight
+        if (sessionIdRef.current !== mySession) return; // cancelled/restarted while this request was in flight
         if (s.status === 'success') {
-          handledRef.current = true;
           clearInterval(interval);
           try {
             await finishOnboarding();
@@ -109,7 +109,6 @@ export default function OnboardingPage() {
             setSetupError((err as Error).message);
           }
         } else if (s.status === 'error') {
-          handledRef.current = true;
           clearInterval(interval);
           setSetupState('error');
           setSetupError(s.error || 'Sign-in failed. Try again, or paste a token manually.');
