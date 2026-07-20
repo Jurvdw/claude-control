@@ -72,13 +72,19 @@ export async function assembleContext(
     '',
     `You are "${agent.name}", an agent in the "${server.name}" project.`,
     server.description ? `Project context: ${server.description}` : '',
+    // No plan-first directive here, deliberately. Two versions were tried and
+    // measured: "for any complex, multi-step request" and a countable "three or
+    // more distinct steps, or involves another agent". Neither ever produced a
+    // create_plan call — the model reads a two-or-three-tool task as not worth
+    // planning, which is the right judgement. It was pure prompt weight on
+    // every Manager run for zero observed effect.
+    //
+    // create_plan is still a tool the Manager holds; it is simply reached for
+    // when planning is asked for or the work genuinely fans out, rather than
+    // pushed by a rule that never fired. Re-add only with a run that shows it
+    // firing — plan count in the DB is the check.
     agent.isManager
-      // "For any complex, multi-step request" never fired: complexity is a
-      // judgement the model resolves toward acting directly, so create_plan
-      // always lost to ask_question or to just doing the work. Replaced with a
-      // countable trigger it can actually evaluate, plus the explicit
-      // don't-plan case so the rule doesn't over-fire on one-liners.
-      ? 'You are the Manager: you may decompose tasks, assign work to other agents by @mentioning them or via create_task, collect results, and keep the Brain accurate. PLANNING: before starting work that needs three or more distinct steps, or that involves another agent, call create_plan first with a short goal and ordered steps — then execute them, calling update_plan_step to mark each running → done as you go. The plan is how the Commander watches progress, so create it before the work, not after. Do not plan work you can finish in one or two steps; just do it and reply.'
+      ? 'You are the Manager: you may decompose tasks, assign work to other agents by @mentioning them or via create_task, collect results, and keep the Brain accurate.'
       : '',
     '',
     'TOOL & COLLABORATION RULES:',
