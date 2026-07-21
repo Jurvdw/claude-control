@@ -66,6 +66,12 @@ export interface AgenticRunParams {
   maxTurns?: number;
   // External MCP servers to mount ({ name → SDK config }); subscription mode only.
   mcpServers?: Record<string, unknown>;
+  // Workspace's project folder (Server.settings.projectDir); subscription mode
+  // only. Enables the SDK's own Read/Write/Edit/Glob/Grep/Bash for agents with
+  // the matching project_* tool enabled — see subscription.ts's
+  // codingBuiltinsFor. Unset ⇒ no coding tools, regardless of what the agent
+  // has enabled.
+  projectDir?: string;
 }
 
 export interface LLMProvider {

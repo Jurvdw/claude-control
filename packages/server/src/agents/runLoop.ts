@@ -130,6 +130,7 @@ export async function runAgent(trigger: AgentTrigger, opts?: { capture?: boolean
           },
           maxTurns: ITERATION_CAP,
           mcpServers,
+          projectDir: (server.settings as { projectDir?: string } | null)?.projectDir,
         },
         (e) => {
           if (e.type === 'tool_use') { toolsUsed.add(e.name); setStatus(agent, 'WORKING', `Using ${e.name}…`); }

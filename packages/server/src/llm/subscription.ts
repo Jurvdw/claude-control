@@ -40,6 +40,27 @@ const SUB_EFFORT: Record<AgentEffort, 'low' | 'medium' | 'high'> = {
 
 const MCP_NAME = 'cc';
 
+// Canonical tool name (see tools/coding.ts) → the Claude Agent SDK's matching
+// built-in. Only meaningful when a workspace has a project folder set — see
+// runAgentic below.
+const CODING_TOOL_MAP: Record<string, string> = {
+  project_read_file: 'Read',
+  project_list_dir: 'Glob',
+  project_search: 'Grep',
+  project_write_file: 'Write',
+  project_edit_file: 'Edit',
+  project_run_bash: 'Bash',
+};
+
+function codingBuiltinsFor(toolNames: string[]): string[] {
+  const out: string[] = [];
+  for (const n of toolNames) {
+    const builtin = CODING_TOOL_MAP[n];
+    if (builtin) out.push(builtin);
+  }
+  return out;
+}
+
 export class SubscriptionProvider implements LLMProvider {
   readonly mode = 'subscription' as const;
   readonly ownsAgentLoop = true;
@@ -89,9 +110,12 @@ export class SubscriptionProvider implements LLMProvider {
 
     // `web_search` in our registry is a capability flag, not a real client-side
     // tool: it switches on the SDK's native WebSearch (which runs server-side).
-    // We drop our stub so the model sees exactly one search tool.
+    // We drop our stub so the model sees exactly one search tool. The six
+    // project_* coding tools are handled the same way, in favor of the SDK's
+    // own built-ins — see codingBuiltinsFor.
     const wantsWebSearch = params.tools.some((t) => t.name === 'web_search');
-    const ourTools = params.tools.filter((t) => t.name !== 'web_search');
+    const codingBuiltins = params.projectDir ? codingBuiltinsFor(params.tools.map((t) => t.name)) : [];
+    const ourTools = params.tools.filter((t) => t.name !== 'web_search' && !(t.name in CODING_TOOL_MAP));
 
     // Map our tools onto SDK in-process MCP tools.
     const sdkTools = ourTools.map((spec) =>
@@ -128,16 +152,18 @@ export class SubscriptionProvider implements LLMProvider {
           mcpServers: { [MCP_NAME]: server, ...externalMcp },
           allowedTools: allowed,
           // Drop the SDK's built-in toolset (Read/Write/Edit/Bash/Glob/Grep/
-          // Task/TodoWrite/…). canUseTool already denied them at call time, but
-          // their schemas were still shipped on EVERY request — measured at the
-          // bulk of a ~14k-token per-call overhead. Agents work through our own
-          // MCP tools, so the only built-in we ever want is WebSearch, and only
-          // for agents granted web_search.
-          tools: wantsWebSearch ? ['WebSearch'] : [],
-          // Permit our tools + any mounted MCP server's tools (all mcp__ prefixed);
-          // deny the SDK's built-in file/bash tools.
+          // Task/TodoWrite/…) UNLESS the workspace has a project folder set and
+          // the agent has the matching project_* tool enabled — in which case
+          // ship exactly those built-ins (codingBuiltins) and no others.
+          // canUseTool already denies anything not explicitly listed here, but
+          // an unused built-in's schema still costs real tokens on every
+          // request — measured at the bulk of a ~14k-token per-call overhead.
+          tools: [...(wantsWebSearch ? ['WebSearch'] : []), ...codingBuiltins],
+          cwd: codingBuiltins.length ? params.projectDir : undefined,
+          // Permit our tools + any mounted MCP server's tools (all mcp__ prefixed)
+          // + WebSearch (if granted) + the coding built-ins translated above.
           canUseTool: async (toolName: string, toolInput: Record<string, unknown>) =>
-            toolName.startsWith('mcp__') || (wantsWebSearch && toolName === 'WebSearch')
+            toolName.startsWith('mcp__') || (wantsWebSearch && toolName === 'WebSearch') || codingBuiltins.includes(toolName)
               ? { behavior: 'allow' as const, updatedInput: toolInput }
               : { behavior: 'deny' as const, message: 'Only Claude Control + mounted MCP tools are permitted.' },
           settingSources: [],
@@ -377,5 +403,7 @@ function normalizeError(err: unknown): Error {
 }
 
 // Exposed for tests: the JSON-schema -> zod conversion is easy to break in ways
-// that only show up as a model silently receiving the wrong tool shape.
-export const __testing = { jsonSchemaToZodShape, mapType };
+// that only show up as a model silently receiving the wrong tool shape, and
+// codingBuiltinsFor is easy to break in ways that only show up as an agent
+// silently missing (or wrongly gaining) a built-in tool.
+export const __testing = { jsonSchemaToZodShape, mapType, codingBuiltinsFor };
