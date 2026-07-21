@@ -235,6 +235,9 @@ export default function SettingsPanel() {
           </Section>
         )}
 
+        {/* ── Coding ────────────────────────────────────────────────────── */}
+        {settings && <CodingSection settings={settings} saveSettings={saveSettings} />}
+
         {/* ── Email ─────────────────────────────────────────────────────── */}
         <EmailSection />
 
@@ -717,6 +720,54 @@ function EmailSection() {
             Use an <span className="text-cream-300">app password</span>, not your login password. Gmail: turn on 2-Step Verification, then Google Account → Security → App passwords. Nothing is sent anywhere but your mail provider; the password is encrypted at rest.
           </p>
         </>
+      )}
+    </Section>
+  );
+}
+
+// Lets a workspace point coding-capable agents (project_read_file,
+// project_run_bash, etc.) at a real folder on disk. Folder picking needs the
+// native Electron dialog — in a browser tab there's no picker, so the section
+// explains that instead of showing a broken button.
+function CodingSection({
+  settings,
+  saveSettings,
+}: {
+  settings: ServerSettings;
+  saveSettings: (patch: Partial<ServerSettings>) => Promise<void>;
+}) {
+  const { addToast } = useNotifications();
+  const [picking, setPicking] = useState(false);
+
+  const choose = async () => {
+    if (!window.ccDesktop) return;
+    setPicking(true);
+    try {
+      const dir = await window.ccDesktop.pickFolder();
+      if (!dir) return; // user cancelled
+      await saveSettings({ projectDir: dir });
+    } catch (e) {
+      addToast('Could not set project folder', (e as Error).message, 'error');
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  return (
+    <Section title="Coding" desc="Give agents real file and shell access, scoped to one folder on this machine.">
+      {window.ccDesktop ? (
+        <Field label="Project folder" desc="Shared by every agent in this workspace with a coding tool enabled (project_read_file, project_run_bash, etc.).">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-cream-300 font-mono max-w-[280px] truncate">
+              {settings.projectDir || 'Not set'}
+            </span>
+            <Button type="button" variant="ghost" onClick={choose} disabled={picking}>
+              {picking ? 'Choosing…' : 'Choose folder…'}
+            </Button>
+          </div>
+        </Field>
+      ) : (
+        <p className="text-sm text-ink-500">Setting a project folder requires the desktop app.</p>
       )}
     </Section>
   );
