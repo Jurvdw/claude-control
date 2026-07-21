@@ -175,6 +175,11 @@ app.whenReady().then(() => {
     app.isQuitting = true;
     require('electron-updater').autoUpdater.quitAndInstall();
   });
+  ipcMain.handle('cc:pick-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
   initAutoUpdate(() => mainWindow);
 
   app.on('activate', () => {

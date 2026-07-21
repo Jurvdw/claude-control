@@ -18,6 +18,7 @@ declare global {
       version(): Promise<string>;
       onUpdate(cb: (e: UpdateEvent) => void): () => void;
       installNow(): Promise<void>;
+      pickFolder(): Promise<string | null>;
     };
   }
 }

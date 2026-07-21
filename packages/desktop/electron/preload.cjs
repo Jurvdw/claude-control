@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld('ccDesktop', {
 
   /** Quit and install a downloaded update now (the user explicitly opted in). */
   installNow: () => ipcRenderer.invoke('cc:install-update'),
+
+  /** Open a native folder picker. Resolves to the chosen path, or null if cancelled. */
+  pickFolder: () => ipcRenderer.invoke('cc:pick-folder'),
 });
