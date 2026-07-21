@@ -5,6 +5,7 @@ import './messaging.js';
 import './tasks.js';
 import './files.js';
 import './code.js';
+import './coding.js';
 import './email.js';
 import './web.js';
 import './workflows.js';
