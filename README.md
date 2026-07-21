@@ -1,6 +1,6 @@
 # Claude Control
 
-Claude Control is a Discord-style AI control center for building and orchestrating Claude-powered agents. Teams can create specialized AI agents that collaborate via channels, tasks, and shared knowledge (Brain), with full tenant isolation and cost tracking.
+Claude Control is a Discord-style AI control center for building and orchestrating Claude-powered agents. Teams can create specialized AI agents that collaborate via channels, tasks, and shared knowledge (Brain), with full tenant isolation and cost tracking. Agents can also be given real coding capability — reading, writing, and editing files and running shell commands in a real folder on disk, the same way Claude Code works.
 
 ## Stack
 
@@ -25,7 +25,7 @@ npm run desktop     # builds the UI + server, launches the native app window
 
 On Windows you can also just double-click **`Claude Control.cmd`** (installs + builds on first run, then opens the app).
 
-First launch initializes a local database (~1 minute). Your data lives in your user profile (`%AppData%/Claude Control`), not the repo. Close the window to stop everything (Postgres shuts down cleanly).
+First launch initializes a local database (~1 minute) and walks you through a short first-run tour. Your data lives in your user profile (`%AppData%/Claude Control`), not the repo. Close the window to stop everything (Postgres shuts down cleanly). The desktop app checks for updates and can install them in place.
 
 ### Build a distributable `.exe`
 
@@ -63,11 +63,9 @@ The desktop app can run your agents on your **Claude Pro / Max / Team / Enterpri
 
 ### Setup
 
-1. Install Claude Code: `npm i -g @anthropic-ai/claude-code`
-2. Generate a token: `claude setup-token` (sign in with your Claude account; it prints a token).
-3. In the app's onboarding, choose **"Claude subscription"** and paste the token.
+In the app's onboarding, choose **"Claude subscription"** and click **Connect** — the app runs `claude setup-token` for you (its binary is bundled) and signs you in without leaving the window. Prefer the manual route? Install Claude Code (`npm i -g @anthropic-ai/claude-code`), run `claude setup-token` yourself, and paste the printed token instead — both paths land in the same place.
 
-Under the hood the token is stored encrypted and passed to the Agent SDK as `CLAUDE_CODE_OAUTH_TOKEN`; the SDK owns the agent loop and calls our tools as in-process MCP tools. The SDK's binary is bundled, so nothing else is required.
+Under the hood the token is stored encrypted and passed to the Agent SDK as `CLAUDE_CODE_OAUTH_TOKEN`; the SDK owns the agent loop and calls our tools as in-process MCP tools.
 
 ### ⚠️ Important caveat
 
@@ -78,6 +76,15 @@ Subscription mode is **gated to the self-hosted desktop app** (`SELF_HOSTED=true
 The default and the only option for hosted/browser use: paste an Anthropic API key (from console.anthropic.com). It's encrypted at rest (AES-256-GCM), validated before storing, and billed pay-per-token to your account.
 
 The provider is chosen per-account by which credential you connect (subscription wins when present and self-hosted). See [docs/API_CONTRACT.md](docs/API_CONTRACT.md) for `/provider/status` and `/api-keys`.
+
+## Real coding agents
+
+Point a workspace at a real folder on disk (Settings → Coding → **Choose folder…**) and any agent with coding tools enabled gets genuine file and shell access scoped to that folder — reading, writing, and editing files, listing and searching the tree, and running shell commands, the same way Claude Code works. One project folder per workspace, shared by every coding-capable agent in it.
+
+- **Subscription-mode** agents get this via the Claude Agent SDK's own built-in tools (Read/Write/Edit/Glob/Grep/Bash).
+- **BYOK** agents get an equivalent hand-built set (`project_read_file`, `project_write_file`, `project_edit_file`, `project_list_dir`, `project_search`, `project_run_bash`), selectable per-agent in the same tool checklist as every other tool.
+- No per-action approval — once a tool is enabled and the folder is set, it runs immediately, matching the trust model of running Claude Code yourself in that folder. The project folder can never be set to Claude Control's own install/data directories, but nothing sandboxes what a shell command does *inside* the folder.
+- The **Coder** template ships with all six enabled by default for new workspaces.
 
 ## License & using this with Claude
 
@@ -154,15 +161,14 @@ claude-control/
 │   │   ├── index.ts          # Express entry
 │   │   ├── auth/             # Auth guards & session middleware
 │   │   ├── llm/              # Model pricing, cost estimation
-│   │   ├── tools/            # Tool registry (Brain, messaging, code, etc.)
+│   │   ├── tools/            # Tool registry (Brain, messaging, code, coding, etc.)
 │   │   ├── routes/           # REST API endpoints
 │   │   ├── agents/           # Run loop, context assembly, dispatch
 │   │   ├── queue/            # In-process runner + cron scheduler
-│   │   ├── db/               # Embedded Postgres + seed
+│   │   ├── db/               # Embedded Postgres + seed.ts (6 starter agent templates)
 │   │   └── realtime/         # Socket.IO gateway + event bus
 │   ├── prisma/
-│   │   ├── schema.prisma     # Data model (all tenant-scoped)
-│   │   └── seed.ts           # Seed 6 starter agent templates
+│   │   └── schema.prisma     # Data model (all tenant-scoped)
 │   └── tests/                # Vitest unit tests
 ├── packages/desktop/         # Electron shell → packaged .exe (electron-builder)
 │   ├── electron/main.cjs     # boots the backend as a child, renders the window
@@ -215,7 +221,7 @@ Tests include:
 
 For a complete REST and Socket.IO contract, see [docs/API_CONTRACT.md](docs/API_CONTRACT.md). Key endpoints:
 
-- **Auth**: `/auth/{register,login,logout,me}`
+- **Auth**: `/auth/{register,login,logout,me,onboarding-complete}`
 - **Servers**: `GET/POST /servers`, `GET/PATCH/DELETE /servers/:serverId`
 - **Agents**: `GET/POST/PATCH /servers/:serverId/agents`
 - **Messages & Channels**: `/servers/:serverId/channels/:channelId/messages`
@@ -229,8 +235,6 @@ All authenticated endpoints use the `cc_session` cookie; no bearer tokens.
 
 - Type-check: `npm run lint`
 - Format: Prettier (integrated in the repo)
-- Commit directly to the current branch (see `.claude/CLAUDE.md`)
+- Run tests before committing: `npm run test`
 
-## License
-
-Private — Informatica internal project.
+See [License & using this with Claude](#license--using-this-with-claude) above — Apache 2.0.
