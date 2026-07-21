@@ -58,7 +58,15 @@ const TEMPLATES: TemplateSeed[] = [
       'You are a pragmatic software engineer. Write clean, correct code, explain trade-offs briefly, and keep changes minimal. Post a short summary plus a file card for code you produce.',
     modelClass: 'SONNET',
     effort: 'HIGH',
-    enabledTools: [...DEFAULT_TOOLS, ...DOC_TOOLS, 'run_code'],
+    enabledTools: [
+      ...DEFAULT_TOOLS,
+      'project_read_file',
+      'project_list_dir',
+      'project_search',
+      'project_write_file',
+      'project_edit_file',
+      'project_run_bash',
+    ],
     roleColor: '#63e6be',
   },
   {
