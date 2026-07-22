@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // Dev server proxies API + socket to the backend so the web app can use
@@ -23,4 +23,7 @@ export default defineConfig({
     },
   },
   build: { outDir: 'dist' },
+  test: {
+    environment: 'node',
+  },
 });
