@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import type { GraphNode, GraphEdge } from '../lib/types';
+import { spatialHashPairs, type HashedPoint } from '../lib/spatialHash';
 
 export interface NotePreview {
   title: string;
@@ -45,6 +46,13 @@ function folderColor(folder: string): string {
   for (let i = 0; i < folder.length; i++) h = (h * 31 + folder.charCodeAt(i)) >>> 0;
   return FOLDER_COLORS[h % FOLDER_COLORS.length];
 }
+
+// Grid cell size for the repulsion spatial hash. Derived from the existing
+// `rep = 3200 / d2` force formula: force drops to ~0.5 (negligible next to
+// the ~1-5 unit centering/damping forces applied per tick) at d = sqrt(3200
+// / 0.5) ≈ 80; cell size is 1.5x that distance so each node's 3x3
+// neighborhood comfortably covers every pair still worth computing.
+const REPULSION_CELL_SIZE = 120;
 
 export default function BrainGraph({ nodes, edges, selectedId, onOpen, onEdit, onNew, onLink, fetchPreview }: Props) {
   const posRef = useRef<Map<string, Pt>>(new Map());
@@ -118,22 +126,24 @@ export default function BrainGraph({ nodes, edges, selectedId, onOpen, onEdit, o
       const pos = posRef.current;
       const alpha = alphaRef.current;
 
-      for (let i = 0; i < ids.length; i++) {
-        const a = pos.get(ids[i]);
-        if (!a) continue;
-        for (let j = i + 1; j < ids.length; j++) {
-          const b = pos.get(ids[j]);
-          if (!b) continue;
-          let dx = a.x - b.x;
-          let dy = a.y - b.y;
-          const d2 = dx * dx + dy * dy || 0.01;
-          const d = Math.sqrt(d2);
-          const rep = 3200 / d2;
-          const fx = (dx / d) * rep;
-          const fy = (dy / d) * rep;
-          a.vx += fx; a.vy += fy;
-          b.vx -= fx; b.vy -= fy;
-        }
+      const hashPoints: HashedPoint[] = [];
+      for (const id of ids) {
+        const p = pos.get(id);
+        if (p) hashPoints.push({ id, x: p.x, y: p.y });
+      }
+      for (const [idA, idB] of spatialHashPairs(hashPoints, REPULSION_CELL_SIZE)) {
+        const a = pos.get(idA);
+        const b = pos.get(idB);
+        if (!a || !b) continue;
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy || 0.01;
+        const d = Math.sqrt(d2);
+        const rep = 3200 / d2;
+        const fx = (dx / d) * rep;
+        const fy = (dy / d) * rep;
+        a.vx += fx; a.vy += fy;
+        b.vx -= fx; b.vy -= fy;
       }
       const L = 110;
       const K = 0.03;
