@@ -11,6 +11,7 @@ import {
   LLMAuthError,
 } from './types.js';
 import { logger } from '../lib/logger.js';
+import { resolveInProject } from '../tools/coding.js';
 
 /**
  * Agent SDK subscription backend (self-hosted, individual use only).
@@ -59,6 +60,32 @@ function codingBuiltinsFor(toolNames: string[]): string[] {
     if (builtin) out.push(builtin);
   }
   return out;
+}
+
+// Which input field of each SDK built-in carries a filesystem path the model
+// controls. Bash has none — its cwd is already pinned to projectDir when
+// mounted (see runAgentic), and a `cd` inside the command is the same
+// disclosed, unfenced gap project_run_bash already has.
+const CODING_PATH_FIELD: Record<string, string> = {
+  Read: 'file_path',
+  Write: 'file_path',
+  Edit: 'file_path',
+  Glob: 'path',
+  Grep: 'path',
+};
+
+// Reject a coding built-in call whose path argument (relative or absolute)
+// would resolve outside projectDir. Read/Write/Edit's file_path is normally
+// absolute — path.resolve leaves an absolute path untouched, so
+// resolveInProject still catches it via the containment check. A tool with no
+// path field (e.g. Glob/Grep with no `path`, defaulting to cwd) is allowed —
+// cwd is already projectDir.
+function fenceViolation(toolName: string, toolInput: Record<string, unknown>, projectDir: string): string | null {
+  const field = CODING_PATH_FIELD[toolName];
+  if (!field) return null;
+  const raw = toolInput[field];
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  return resolveInProject(projectDir, raw) ? null : `"${raw}" is outside the project folder.`;
 }
 
 export class SubscriptionProvider implements LLMProvider {
@@ -162,10 +189,17 @@ export class SubscriptionProvider implements LLMProvider {
           cwd: codingBuiltins.length ? params.projectDir : undefined,
           // Permit our tools + any mounted MCP server's tools (all mcp__ prefixed)
           // + WebSearch (if granted) + the coding built-ins translated above.
-          canUseTool: async (toolName: string, toolInput: Record<string, unknown>) =>
-            toolName.startsWith('mcp__') || (wantsWebSearch && toolName === 'WebSearch') || codingBuiltins.includes(toolName)
-              ? { behavior: 'allow' as const, updatedInput: toolInput }
-              : { behavior: 'deny' as const, message: 'Only Claude Control + mounted MCP tools are permitted.' },
+          canUseTool: async (toolName: string, toolInput: Record<string, unknown>) => {
+            if (toolName.startsWith('mcp__') || (wantsWebSearch && toolName === 'WebSearch')) {
+              return { behavior: 'allow' as const, updatedInput: toolInput };
+            }
+            if (codingBuiltins.includes(toolName)) {
+              const violation = fenceViolation(toolName, toolInput, params.projectDir!);
+              if (violation) return { behavior: 'deny' as const, message: violation };
+              return { behavior: 'allow' as const, updatedInput: toolInput };
+            }
+            return { behavior: 'deny' as const, message: 'Only Claude Control + mounted MCP tools are permitted.' };
+          },
           settingSources: [],
           // Skills are a Claude Code feature our agents never use — they work
           // through our own MCP tools. Omitting this option does NOT disable
@@ -406,4 +440,4 @@ function normalizeError(err: unknown): Error {
 // that only show up as a model silently receiving the wrong tool shape, and
 // codingBuiltinsFor is easy to break in ways that only show up as an agent
 // silently missing (or wrongly gaining) a built-in tool.
-export const __testing = { jsonSchemaToZodShape, mapType, codingBuiltinsFor };
+export const __testing = { jsonSchemaToZodShape, mapType, codingBuiltinsFor, fenceViolation };

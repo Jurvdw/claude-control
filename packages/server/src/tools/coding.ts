@@ -22,7 +22,9 @@ async function projectDirFor(ctx: ToolContext): Promise<string | null> {
 
 // Resolve a tool-supplied relative path against the project folder, rejecting
 // any path that would escape it (..-traversal or an absolute path elsewhere).
-function resolveInProject(projectDir: string, relPath: string): string | null {
+// Also used by llm/subscription.ts to fence the SDK's built-in Read/Write/
+// Edit/Glob/Grep tools the same way.
+export function resolveInProject(projectDir: string, relPath: string): string | null {
   const resolved = path.resolve(projectDir, relPath);
   const rel = path.relative(projectDir, resolved);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
