@@ -249,4 +249,64 @@ test.describe('Claude Control desktop', () => {
     await page.getByRole('button', { name: 'Chat' }).click();
     await expect(page.getByRole('paragraph').filter({ hasText: marker })).toBeVisible({ timeout: 15_000 });
   });
+
+  test('virtualizes a long message list and stays pinned to the newest message', async ({ page }) => {
+    // Regression for the react-virtuoso swap (2026-07-23): confirms the feed
+    // still renders the newest message and stays scrolled to it after a
+    // volume of messages that would previously all mount as DOM nodes at
+    // once (and, pre-virtualization, would have been silently truncated by
+    // the old MAX_RENDERED=200 cap — this volume is deliberately below 200
+    // so a regression back to the old cap would NOT be caught by messages
+    // going missing, only by a real virtualization check).
+    await signUp(page);
+    await createWorkspace(page);
+
+    const { serverId, channelId } = await page.evaluate(async () => {
+      const { servers } = await fetch('/servers', { credentials: 'include' }).then((r) => r.json());
+      const serverId = servers[0].id;
+      const { channels } = await fetch(`/servers/${serverId}/channels`, { credentials: 'include' }).then((r) => r.json());
+      return { serverId, channelId: channels[0].id };
+    });
+
+    // Seed 30 messages directly via the API — fast and deterministic versus
+    // typing+sending through the UI, and exercises the same endpoint the
+    // Send button uses.
+    const lastMarker = 'virtuoso e2e message 30';
+    await page.evaluate(
+      async ({ serverId, channelId, lastMarker }) => {
+        // Stays under the 50-message page-size cliff in
+        // GET /servers/:serverId/channels/:channelId/messages (that endpoint
+        // returns the oldest N, not newest N, when unpaginated — a separate,
+        // pre-existing bug, not this test's concern) so all 30 seeded
+        // messages come back regardless of that bug.
+        for (let i = 1; i <= 30; i++) {
+          const content = i === 30 ? lastMarker : `virtuoso e2e message ${i}`;
+          const res = await fetch(`/servers/${serverId}/channels/${channelId}/messages`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          });
+          if (!res.ok) throw new Error(`message ${i} POST failed: ${res.status}`);
+        }
+      },
+      { serverId, channelId, lastMarker },
+    );
+
+    await page.reload();
+    await page.getByRole('heading', { name: /# general/ }).waitFor({ timeout: 60_000 });
+
+    // The newest message must be visible without any manual scrolling —
+    // proves initialTopMostItemIndex/followOutput land the view at the
+    // bottom of a freshly loaded long list.
+    await expect(page.getByRole('paragraph').filter({ hasText: lastMarker })).toBeVisible({ timeout: 15_000 });
+
+    // The first seeded message must NOT be mounted — proves the list is
+    // actually windowed, not just capped-then-fully-rendered.
+    // Anchored to an exact match: Playwright's `hasText` does substring
+    // matching, so an unanchored 'virtuoso e2e message 1' would also match
+    // messages 10-19, silently asserting an 11-message range instead of
+    // just message 1.
+    await expect(page.getByRole('paragraph').filter({ hasText: /^virtuoso e2e message 1$/ })).toHaveCount(0);
+  });
 });
