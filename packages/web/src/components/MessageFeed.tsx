@@ -1,8 +1,9 @@
-import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, forwardRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Virtuoso } from 'react-virtuoso';
 import { useServer } from '../state/ServerContext';
 import { useAuth } from '../state/AuthContext';
 import { reactions as reactionsApi } from '../lib/api';
@@ -48,10 +49,6 @@ function Attachment({ file }: { file: MessageFile }) {
   );
 }
 
-// Cap rendered messages so very long channels stay light (older ones stay in
-// state and can still be scrolled once loaded, but we don't paint them all).
-const MAX_RENDERED = 200;
-
 // Wrap known @mentions (and @everyone) in a highlighted pill, Discord-style.
 const MENTION_RE = /(@everyone|@[A-Za-z0-9_-]+)/g;
 function highlightMentions(children: ReactNode, handles: Set<string>): ReactNode {
@@ -72,39 +69,61 @@ function highlightMentions(children: ReactNode, handles: Set<string>): ReactNode
 export default function MessageFeed() {
   const { messages, activeChannel, loadingMessages, agents } = useServer();
   const mentionHandles = new Set(agents.map((a) => a.name.replace(/\s+/g, '').toLowerCase()));
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
 
   if (!activeChannel) {
     return <div className="flex-1 flex items-center justify-center text-ink-500">Pick a channel to start.</div>;
   }
 
-  return (
-    <div className="flex-1 overflow-y-auto px-6 py-4">
-      {loadingMessages && <div className="text-center text-ink-500 text-sm py-4">Loading…</div>}
-      {!loadingMessages && messages.length === 0 && (
-        <div className="h-full flex flex-col items-center justify-center text-center text-ink-500">
-          <div className="text-4xl mb-3">💬</div>
-          <p className="text-cream-300 font-medium">This is the start of #{activeChannel.name}.</p>
-          <p className="text-sm mt-1">Say hi, or @mention an agent to put them to work.</p>
-        </div>
-      )}
-      {messages.length > MAX_RENDERED && (
-        <div className="text-center text-[11px] text-ink-600 mb-2">Showing the {MAX_RENDERED} most recent messages</div>
-      )}
-      <div className="flex flex-col gap-1">
-        {(messages.length > MAX_RENDERED ? messages.slice(-MAX_RENDERED) : messages).map((m) => {
-          const agent = agents.find((a) => a.id === m.agentId);
-          return <MessageItem key={m.id} m={m} agentColor={agent?.roleColor} isManager={agent?.isManager} mentionHandles={mentionHandles} />;
-        })}
+  if (!loadingMessages && messages.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center text-ink-500">
+        <div className="text-4xl mb-3">💬</div>
+        <p className="text-cream-300 font-medium">This is the start of #{activeChannel.name}.</p>
+        <p className="text-sm mt-1">Say hi, or @mention an agent to put them to work.</p>
       </div>
-      <div ref={bottomRef} />
+    );
+  }
+
+  return (
+    // min-h-0 is required here: this div's parent is a flex column, and a
+    // flex child's default min-height is `auto` (its content size), not 0 —
+    // without this override, Virtuoso's height:100% child collapses the
+    // whole feed to zero height instead of filling the available space.
+    <div className="flex-1 min-h-0">
+      {loadingMessages && <div className="text-center text-ink-500 text-sm py-4">Loading…</div>}
+      <Virtuoso
+        data={messages}
+        computeItemKey={(_index, m) => m.id}
+        // Start scrolled to the newest message, not the top of the list.
+        initialTopMostItemIndex={messages.length - 1}
+        // Only auto-follow new messages if the user is already at (or near)
+        // the bottom — don't yank the view if they've scrolled up to read
+        // history. Virtuoso calls this on every data change.
+        followOutput={(isAtBottom) => (isAtBottom ? 'smooth' : false)}
+        style={{ height: '100%' }}
+        // Padding is applied on Virtuoso's own scroller element (via the
+        // custom Scroller component below), not a div wrapping Virtuoso —
+        // that way it scrolls WITH the content, matching the original
+        // layout's px-6 py-4 on the scrollable element itself. Padding on an
+        // outer wrapper instead would sit outside the scroll area, so the
+        // first/last message would land flush against the viewport edge.
+        components={{ Scroller: ScrollerWithPadding }}
+        itemContent={(_index, m) => {
+          const agent = agents.find((a) => a.id === m.agentId);
+          return <MessageItem m={m} agentColor={agent?.roleColor} isManager={agent?.isManager} mentionHandles={mentionHandles} />;
+        }}
+      />
     </div>
   );
 }
+
+// Virtuoso's own scroller needs the horizontal/vertical padding the old
+// plain-div layout had (px-6 py-4) — applying it via a wrapping div instead
+// would put padding outside the scrollable area, so top/bottom messages
+// would sit flush against the viewport edge once scrolled.
+const ScrollerWithPadding = forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement>>(function ScrollerWithPadding(props, ref) {
+  return <div {...props} ref={ref} className="px-6 py-4" />;
+});
 
 function MessageItem({ m, agentColor, isManager, mentionHandles }: { m: Message; agentColor?: string; isManager?: boolean; mentionHandles: Set<string> }) {
   const { activeServer } = useServer();
@@ -130,7 +149,7 @@ function MessageItem({ m, agentColor, isManager, mentionHandles }: { m: Message;
   const draftId = card?.draftId;
 
   return (
-    <div className="group flex gap-3 px-2 py-1.5 rounded-lg hover:bg-ink-800/50 transition-colors animate-fade-in">
+    <div className="group flex gap-3 px-2 py-1.5 mb-1 rounded-lg hover:bg-ink-800/50 transition-colors animate-fade-in">
       <Avatar
         name={name}
         size={36}
