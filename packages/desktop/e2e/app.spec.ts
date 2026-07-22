@@ -141,4 +141,112 @@ test.describe('Claude Control desktop', () => {
     await page.getByRole('heading', { name: /# general/ }).waitFor({ timeout: 60_000 });
     await expect(page.getByText("That's the core loop")).toHaveCount(0);
   });
+
+  test('runs a workflow end-to-end (manual trigger -> post message)', async ({ page }) => {
+    // Regression for the workflow engine + run wiring — a 2026-07-23 live QA
+    // pass exercised this manually (topo order, node execution, run-status
+    // socket updates); this locks it into the permanent suite. No agent node
+    // involved, so it stays deterministic.
+    await signUp(page);
+    await createWorkspace(page);
+
+    const { serverId, channelId } = await page.evaluate(async () => {
+      const { servers } = await fetch('/servers', { credentials: 'include' }).then((r) => r.json());
+      const serverId = servers[0].id;
+      const { channels } = await fetch(`/servers/${serverId}/channels`, { credentials: 'include' }).then((r) => r.json());
+      return { serverId, channelId: channels[0].id };
+    });
+
+    await page.getByRole('button', { name: 'Workflows' }).click();
+    await page.getByRole('button', { name: 'New workflow' }).click();
+    // Creating a workflow seeds a lone trigger.manual node and auto-loads it.
+    await page.getByRole('button', { name: '▶ Run' }).waitFor({ timeout: 15_000 });
+    const workflowId = await page.evaluate((sid) => localStorage.getItem(`cc.wf.sel.${sid}`), serverId);
+    expect(workflowId).toBeTruthy();
+
+    // Wire trigger.manual -> channel.post via the same PATCH endpoint the
+    // canvas's own Save button calls — avoids a flaky drag-to-connect on the
+    // React Flow canvas while still exercising the real engine end to end.
+    const marker = `workflow e2e ${Date.now()}`;
+    await page.evaluate(
+      async ({ serverId, workflowId, channelId, marker }) => {
+        const graph = {
+          nodes: [
+            { id: 'trigger', type: 'trigger.manual', position: { x: 80, y: 160 }, data: {} },
+            { id: 'post', type: 'channel.post', position: { x: 320, y: 160 }, data: { channelId, text: marker } },
+          ],
+          edges: [{ id: 'e1', source: 'trigger', target: 'post' }],
+        };
+        const res = await fetch(`/servers/${serverId}/workflows/${workflowId}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ graph }),
+        });
+        if (!res.ok) throw new Error(`workflow PATCH failed: ${res.status}`);
+      },
+      { serverId, workflowId, channelId, marker },
+    );
+
+    // The Run button posts /run, which reads the graph fresh from the DB —
+    // the panel's own in-memory nodes (still just the lone trigger) are never
+    // re-saved because `dirty` was never set by the raw PATCH above.
+    await page.getByRole('button', { name: '▶ Run' }).click();
+
+    await page.getByRole('button', { name: 'Chat' }).click();
+    await expect(page.getByRole('paragraph').filter({ hasText: marker })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('fires a webhook-triggered workflow and posts the result', async ({ page, request }) => {
+    // Regression for the public webhook receiver -> workflow dispatch path
+    // (HMAC/tunnel plumbing around it was covered in the same 2026-07-23 QA
+    // pass but isn't re-verified here — this locks in the dispatch itself).
+    await signUp(page);
+    await createWorkspace(page);
+
+    const { serverId, channelId, webhookUrl } = await page.evaluate(async () => {
+      const { servers } = await fetch('/servers', { credentials: 'include' }).then((r) => r.json());
+      const serverId = servers[0].id;
+      const { channels } = await fetch(`/servers/${serverId}/channels`, { credentials: 'include' }).then((r) => r.json());
+      const webhook = await fetch(`/servers/${serverId}/hooks/webhook`, { credentials: 'include' }).then((r) => r.json());
+      return { serverId, channelId: channels[0].id, webhookUrl: webhook.url as string };
+    });
+
+    await page.getByRole('button', { name: 'Workflows' }).click();
+    await page.getByRole('button', { name: 'New workflow' }).click();
+    await page.getByRole('button', { name: '▶ Run' }).waitFor({ timeout: 15_000 });
+    const workflowId = await page.evaluate((sid) => localStorage.getItem(`cc.wf.sel.${sid}`), serverId);
+    expect(workflowId).toBeTruthy();
+
+    const marker = `webhook e2e ${Date.now()}`;
+    await page.evaluate(
+      async ({ serverId, workflowId, channelId, marker }) => {
+        const graph = {
+          nodes: [
+            { id: 'trigger', type: 'trigger.webhook', position: { x: 80, y: 160 }, data: { event: '' } },
+            { id: 'post', type: 'channel.post', position: { x: 320, y: 160 }, data: { channelId, text: marker } },
+          ],
+          edges: [{ id: 'e1', source: 'trigger', target: 'post' }],
+        };
+        const res = await fetch(`/servers/${serverId}/workflows/${workflowId}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ graph }),
+        });
+        if (!res.ok) throw new Error(`workflow PATCH failed: ${res.status}`);
+      },
+      { serverId, workflowId, channelId, marker },
+    );
+
+    // Hit the PUBLIC receiver directly — no session/cookies — the same way an
+    // external caller would.
+    const hookRes = await request.post(webhookUrl, { data: { hello: 'world' } });
+    expect(hookRes.ok()).toBe(true);
+    const hookJson = await hookRes.json();
+    expect(hookJson.workflowsStarted).toBeGreaterThanOrEqual(1);
+
+    await page.getByRole('button', { name: 'Chat' }).click();
+    await expect(page.getByRole('paragraph').filter({ hasText: marker })).toBeVisible({ timeout: 15_000 });
+  });
 });
