@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './state/AuthContext';
 import { NotificationProvider } from './state/NotificationContext';
 import { ServerProvider } from './state/ServerContext';
 import { TourProvider } from './state/TourContext';
+import { ThemeProvider } from './state/ThemeContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OnboardingPage from './pages/OnboardingPage';
@@ -49,13 +50,15 @@ function Shell() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <div className="h-full">
-          <Shell />
-          <Toasts />
-        </div>
-      </NotificationProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <div className="h-full">
+            <Shell />
+            <Toasts />
+          </div>
+        </NotificationProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
