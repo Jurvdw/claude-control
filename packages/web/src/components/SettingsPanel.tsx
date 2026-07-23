@@ -7,6 +7,7 @@ import type { WebhookInfo, TunnelStatus, EmailStatus, McpServerView } from '../l
 import { MCP_CATALOG, type McpCatalogEntry } from '../lib/mcpCatalog';
 import type { ProviderStatus, ApiKey, ServerSettings, BrainWritePolicy, VaultEntry } from '../lib/types';
 import { Button, Input } from './ui';
+import { useTheme } from '../state/ThemeContext';
 
 type ConnectTab = 'apikey' | 'subscription';
 
@@ -263,6 +264,9 @@ export default function SettingsPanel() {
         {/* ── Privacy vault ─────────────────────────────────────────────── */}
         <VaultSection />
 
+        {/* ── Appearance ────────────────────────────────────────────────── */}
+        <AppearanceSection />
+
         {/* ── About / version ───────────────────────────────────────────── */}
         <AboutSection />
       </div>
@@ -387,6 +391,19 @@ function VaultSection() {
       <p className="text-xs text-ink-500 mt-3">
         This removes what it can <span className="text-cream-300">recognise</span> — vault entries and well-formed identifiers. Sensitive text it has never been told about (a name in a paragraph, an address, case details) still reaches Claude. Treat it as a filter for known values, not a guarantee.
       </p>
+    </Section>
+  );
+}
+
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <Section title="Appearance" desc="Choose a color theme, or follow your system setting.">
+      <div className="flex gap-2">
+        <TabBtn active={theme === 'system'} onClick={() => setTheme('system')}>System</TabBtn>
+        <TabBtn active={theme === 'light'} onClick={() => setTheme('light')}>Light</TabBtn>
+        <TabBtn active={theme === 'dark'} onClick={() => setTheme('dark')}>Dark</TabBtn>
+      </div>
     </Section>
   );
 }
