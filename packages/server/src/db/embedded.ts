@@ -281,4 +281,5 @@ CREATE TABLE IF NOT EXISTS "mcp_servers" (
 CREATE UNIQUE INDEX IF NOT EXISTS "mcp_servers_serverId_name_key" ON "mcp_servers"("serverId", "name");
 
 ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboardedAt" TIMESTAMP(3);
+ALTER TABLE "brain_notes" ADD COLUMN IF NOT EXISTS "embedding" BYTEA;
 `;

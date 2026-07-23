@@ -496,6 +496,9 @@ model BrainNote {
   // One-line summary used in the compact Brain index (token efficiency).
   summary    String   @default("")
   content    String   @default("")
+  // Packed Float32Array (384-dim, all-MiniLM-L6-v2). Null until computed;
+  // never backfilled for pre-existing notes.
+  embedding  Bytes?
   updatedBy  String? // userId or agentId
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
