@@ -158,7 +158,12 @@ function MessageItem({ m, agentColor, isManager, mentionHandles }: { m: Message;
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="font-semibold text-sm" style={isAgent && agentColor ? { color: agentColor } : { color: '#f3f1ea' }}>{name}</span>
+          <span
+            className={`font-semibold text-sm${isAgent && agentColor ? '' : ' text-cream-100'}`}
+            style={isAgent && agentColor ? { color: agentColor } : undefined}
+          >
+            {name}
+          </span>
           {isAgent && <span className="text-[10px] uppercase tracking-wide text-ink-500 bg-ink-750 px-1.5 py-0.5 rounded">agent</span>}
           <span className="text-xs text-ink-500">{relTime(m.createdAt)}</span>
         </div>

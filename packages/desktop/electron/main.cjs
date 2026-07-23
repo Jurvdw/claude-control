@@ -94,6 +94,7 @@ function startBackend() {
       EMBEDDED_PG: 'true',
       PG_DATA_DIR: path.join(userData, 'pg'),
       STORAGE_LOCAL_DIR: path.join(userData, 'storage'),
+      EMBEDDING_CACHE_DIR: path.join(userData, 'embeddings-cache'),
       // The backend's stdout is piped to this process, which as a packaged
       // Windows GUI app has no console — so without a file the logs are simply
       // lost. Give it somewhere durable to write.

@@ -4,8 +4,12 @@ const fakeVector = new Float32Array(384).fill(0.1);
 
 // The real model is a ~90MB download — never touch it in a unit test. Fake
 // the pipeline factory to return a stub extractor with the same call shape.
+// `env` is a plain mutable object in the real library (embeddings.ts writes
+// env.cacheDir at module load) — stub it the same shape so that write is a
+// harmless no-op here instead of throwing on an undefined export.
 vi.mock('@xenova/transformers', () => ({
   pipeline: vi.fn(async () => async (_text: string, _opts: Record<string, unknown>) => ({ data: fakeVector })),
+  env: { cacheDir: '' },
 }));
 
 const updateCalls: Array<{ where: unknown; data: unknown }> = [];

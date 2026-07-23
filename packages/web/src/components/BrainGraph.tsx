@@ -399,7 +399,7 @@ export default function BrainGraph({ nodes, edges, selectedId, onOpen, onEdit, o
                 <circle
                   r={r}
                   fill={color}
-                  stroke={sel ? '#f4efe4' : lit ? '#f4efe4' : '#1a1915'}
+                  stroke={sel || lit ? 'rgb(var(--cream-100))' : 'rgb(var(--ink-850))'}
                   strokeWidth={(sel ? 2.5 : 1.5) / k}
                 />
                 {showLabel(n.id) && (
@@ -407,9 +407,9 @@ export default function BrainGraph({ nodes, edges, selectedId, onOpen, onEdit, o
                     y={r + 11 / k}
                     textAnchor="middle"
                     className="pointer-events-none"
-                    fill={lit ? '#f4efe4' : '#b8b2a4'}
+                    fill={lit ? 'rgb(var(--cream-100))' : 'rgb(var(--cream-400))'}
                     fontSize={11 / k}
-                    style={{ paintOrder: 'stroke', stroke: '#12110e', strokeWidth: 3 / k, strokeLinejoin: 'round' }}
+                    style={{ paintOrder: 'stroke', stroke: 'rgb(var(--ink-900))', strokeWidth: 3 / k, strokeLinejoin: 'round' }}
                   >
                     {n.title}
                   </text>

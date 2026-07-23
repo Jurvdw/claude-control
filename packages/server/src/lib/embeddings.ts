@@ -1,9 +1,21 @@
-import { pipeline } from '@xenova/transformers';
+import path from 'node:path';
+import { pipeline, env as transformersEnv } from '@xenova/transformers';
+import { env as configEnv } from '../config/env.js';
 import { prisma } from './prisma.js';
 import { logger } from './logger.js';
 import { packEmbedding } from './embeddingMath.js';
 
 const MODEL = 'Xenova/all-MiniLM-L6-v2';
+
+// @xenova/transformers defaults to caching downloaded model weights inside
+// its own node_modules folder (relative to where the library is installed).
+// In the packaged Electron app that folder lives inside the read-only
+// app.asar archive, so the first real embedding attempt would try to write
+// ~90MB into a read-only path and fail. Point it at a writable, per-install
+// directory instead — same pattern as STORAGE_LOCAL_DIR/PG_DATA_DIR (dev
+// gets a relative default, the packaged app gets a userData path; see
+// electron/main.cjs). Set at module load, before any pipeline() call.
+transformersEnv.cacheDir = path.resolve(configEnv.EMBEDDING_CACHE_DIR);
 
 // Awaited<ReturnType<typeof pipeline<'feature-extraction'>>> rather than
 // naming a library type directly — correct regardless of exactly what
@@ -20,7 +32,14 @@ function getExtractor(): Promise<Extractor> {
   if (!extractorPromise) {
     // feature-extraction task narrows pipeline()'s overload to a callable
     // that takes (text, options) and returns a tensor-like { data }.
-    extractorPromise = pipeline('feature-extraction', MODEL);
+    extractorPromise = pipeline('feature-extraction', MODEL).catch((err: unknown) => {
+      // Don't cache a rejected promise — a transient failure (network blip,
+      // an unwritable cache dir, ...) would otherwise permanently disable
+      // embeddings for the life of the process, since every later call would
+      // just re-await the same rejection. Reset so the next call retries.
+      extractorPromise = null;
+      throw err;
+    });
   }
   return extractorPromise;
 }
