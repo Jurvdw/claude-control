@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { bus } from '../realtime/bus.js';
 import { logger } from '../lib/logger.js';
 import { runAgent } from '../agents/runLoop.js';
+import { embedAndStoreNote } from '../lib/embeddings.js';
 
 // ─── Graph shape (stored as JSON on Workflow.graph) ──────────────────────────
 // Deliberately loose so the GUI canvas and agent tools can both write it.
@@ -242,6 +243,7 @@ async function execNode(
         ? await prisma.brainNote.update({ where: { id: existing.id }, data: { summary, content } })
         : await prisma.brainNote.create({ data: { serverId, title, folder, summary, content } });
       bus.emit('brain.updated', { serverId, note });
+      void embedAndStoreNote(note.id, title, summary, content);
       return { output: `Wrote Brain note "${title}"` };
     }
 

@@ -7,6 +7,7 @@ import { requireServerMember } from '../auth/guards.js';
 import { bus } from '../realtime/bus.js';
 import { invalidateBrainIndex } from '../agents/brainIndex.js';
 import { outgoingLinks, computeBacklinks } from '../lib/wikilinks.js';
+import { embedAndStoreNote } from '../lib/embeddings.js';
 
 export const brainRouter = Router({ mergeParams: true });
 
@@ -105,6 +106,7 @@ brainRouter.post('/notes', requireServerMember(MemberRole.ADMIN), async (req, re
     });
 
     bus.emit('brain.updated', { serverId: req.membership!.serverId, note });
+    void embedAndStoreNote(note.id, note.title, note.summary, note.content);
     return res.status(201).json({ note });
   } catch (err) {
     next(err);
@@ -135,6 +137,7 @@ brainRouter.patch('/notes/:noteId', requireServerMember(MemberRole.ADMIN), async
     });
 
     bus.emit('brain.updated', { serverId: req.membership!.serverId, note: updated });
+    void embedAndStoreNote(updated.id, updated.title, updated.summary, updated.content);
     return res.json({ note: updated });
   } catch (err) {
     next(err);
@@ -220,6 +223,7 @@ brainRouter.post(
       });
 
       bus.emit('brain.updated', { serverId: req.membership!.serverId, note });
+      void embedAndStoreNote(note.id, note.title, note.summary, note.content);
       return res.json({ note });
     } catch (err) {
       next(err);

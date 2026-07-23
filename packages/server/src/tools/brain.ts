@@ -3,6 +3,7 @@ import { bus } from '../realtime/bus.js';
 import { registerTool } from './registry.js';
 import { outgoingLinks, computeBacklinks } from '../lib/wikilinks.js';
 import { capture, CANON, type CaptureKind } from './capture.js';
+import { embedAndStoreNote } from '../lib/embeddings.js';
 
 // Read a Brain note by title (and optional folder).
 registerTool({
@@ -106,6 +107,7 @@ registerTool({
       create: { serverId: ctx.serverId, title, folder, summary, content, updatedBy: ctx.agent.id },
     });
     bus.emit('brain.updated', { serverId: ctx.serverId, note });
+    void embedAndStoreNote(note.id, note.title, note.summary, note.content);
     return `Wrote Brain note "${title}".`;
   },
 });

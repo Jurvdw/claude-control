@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { bus } from '../realtime/bus.js';
 import type { ToolContext } from './registry.js';
+import { embedAndStoreNote } from '../lib/embeddings.js';
 
 /**
  * Proactive capture: how agents remember durable things (voice, preferences,
@@ -139,6 +140,7 @@ export async function capture(kind: CaptureKind, info: string, ctx: ToolContext)
       data: { content: [...header, ...kept].join('\n').slice(0, 20000), updatedBy: ctx.agent.id },
     });
     bus.emit('brain.updated', { serverId: ctx.serverId, note });
+    void embedAndStoreNote(note.id, note.title, note.summary, note.content);
   } else {
     const note = await prisma.brainNote.create({
       data: {
@@ -151,6 +153,7 @@ export async function capture(kind: CaptureKind, info: string, ctx: ToolContext)
       },
     });
     bus.emit('brain.updated', { serverId: ctx.serverId, note });
+    void embedAndStoreNote(note.id, note.title, note.summary, note.content);
   }
 
   return { ok: true, message: `Noted under ${canon.folder}/${canon.title}.` };
