@@ -309,4 +309,26 @@ test.describe('Claude Control desktop', () => {
     // just message 1.
     await expect(page.getByRole('paragraph').filter({ hasText: /^virtuoso e2e message 1$/ })).toHaveCount(0);
   });
+
+  test('sets a light theme via Settings and persists it across reload', async ({ page }) => {
+    await signUp(page);
+    await createWorkspace(page);
+
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Light' }).click();
+
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+      .toBe('light');
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    expect(bg).toBe('rgb(250, 247, 242)'); // --ink-850 in light mode, see index.css
+
+    await page.reload();
+    await page.getByRole('heading', { name: /# general/ }).waitFor({ timeout: 60_000 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.getAttribute('data-theme')))
+      .toBe('light');
+    const stored = await page.evaluate(() => localStorage.getItem('cc.theme'));
+    expect(stored).toBe('light');
+  });
 });
