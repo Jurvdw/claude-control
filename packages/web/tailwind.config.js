@@ -1,31 +1,38 @@
 /** @type {import('tailwindcss').Config} */
+function withOpacity(varName) {
+  return ({ opacityValue }) =>
+    opacityValue === undefined ? `rgb(var(${varName}))` : `rgb(var(${varName}) / ${opacityValue})`;
+}
+
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
         // Claude Code palette — deep charcoal/grey + warm orange accent.
+        // Values come from CSS custom properties (see index.css) so they can
+        // swap per data-theme without touching any component file.
         ink: {
-          900: '#141311',
-          850: '#1a1915',
-          800: '#211f1a',
-          750: '#28251f',
-          700: '#332f28',
-          600: '#413c33',
-          500: '#5a544a',
+          900: withOpacity('--ink-900'),
+          850: withOpacity('--ink-850'),
+          800: withOpacity('--ink-800'),
+          750: withOpacity('--ink-750'),
+          700: withOpacity('--ink-700'),
+          600: withOpacity('--ink-600'),
+          500: withOpacity('--ink-500'),
         },
         cream: {
-          50: '#faf9f5',
-          100: '#f3f1ea',
-          200: '#e6e2d6',
-          400: '#b8b2a4',
+          50: withOpacity('--cream-50'),
+          100: withOpacity('--cream-100'),
+          200: withOpacity('--cream-200'),
+          400: withOpacity('--cream-400'),
         },
         clay: {
-          DEFAULT: '#d97757',
-          400: '#e08a6d',
-          500: '#d97757',
-          600: '#c25f3f',
-          700: '#a04a30',
+          DEFAULT: withOpacity('--clay'),
+          400: withOpacity('--clay-400'),
+          500: withOpacity('--clay-500'),
+          600: withOpacity('--clay-600'),
+          700: withOpacity('--clay-700'),
         },
       },
       fontFamily: {

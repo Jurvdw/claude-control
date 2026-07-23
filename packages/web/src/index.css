@@ -2,8 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Dark values are byte-identical to the pre-theme literals they replace
+ * (#141311, #1a1915, ... #d97757, ...) — just expressed as space-separated
+ * RGB triplets so Tailwind's rgb(var(--x) / <alpha-value>) pattern can add
+ * opacity for classes like bg-clay/20 or border-ink-700/60 (both are used
+ * in the app today — a plain hex custom property would break those).
+ */
 :root {
+  --ink-900: 20 19 17;
+  --ink-850: 26 25 21;
+  --ink-800: 33 31 26;
+  --ink-750: 40 37 31;
+  --ink-700: 51 47 40;
+  --ink-600: 65 60 51;
+  --ink-500: 90 84 74;
+  --cream-50: 250 249 245;
+  --cream-100: 243 241 234;
+  --cream-200: 230 226 214;
+  --cream-400: 184 178 164;
+  --clay: 217 119 87;
+  --clay-400: 224 138 109;
+  --clay-500: 217 119 87;
+  --clay-600: 194 95 63;
+  --clay-700: 160 74 48;
   color-scheme: dark;
+}
+
+/* Light palette: cream tones take the background/surface roles ink held in
+ * dark mode, ink tones take the text/foreground roles cream held. Clay is
+ * unchanged. First-pass values — expected to be eyeballed/tuned in-browser,
+ * not final by construction, but every value here is real (no TBD). */
+:root[data-theme='light'] {
+  --ink-900: 255 255 255;
+  --ink-850: 250 247 242;
+  --ink-800: 232 227 216;
+  --ink-750: 239 233 221;
+  --ink-700: 221 214 200;
+  --ink-600: 163 156 140;
+  --ink-500: 138 131 117;
+  --cream-50: 31 28 23;
+  --cream-100: 44 40 32;
+  --cream-200: 61 55 44;
+  --cream-400: 92 86 72;
+  --clay: 217 119 87;
+  --clay-400: 224 138 109;
+  --clay-500: 217 119 87;
+  --clay-600: 194 95 63;
+  --clay-700: 160 74 48;
+  color-scheme: light;
 }
 
 html,
@@ -14,8 +61,8 @@ body,
 
 body {
   margin: 0;
-  background-color: #1a1915;
-  color: #f3f1ea;
+  background-color: rgb(var(--ink-850));
+  color: rgb(var(--cream-100));
   font-family: Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -23,13 +70,13 @@ body {
 /* Thin, unobtrusive scrollbars in the Claude palette. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #413c33 transparent;
+  scrollbar-color: rgb(var(--ink-600)) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #413c33;
+  background: rgb(var(--ink-600));
   border-radius: 4px;
 }
