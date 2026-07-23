@@ -25,6 +25,7 @@ export const DEFAULT_TOOLS = [
   'read_brain_note',
   'write_brain_note',
   'search_brain',
+  'search_brain_semantic',
   'save_memory',
   'recall_memory',
   'search_memory',

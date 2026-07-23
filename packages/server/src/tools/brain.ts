@@ -3,7 +3,8 @@ import { bus } from '../realtime/bus.js';
 import { registerTool } from './registry.js';
 import { outgoingLinks, computeBacklinks } from '../lib/wikilinks.js';
 import { capture, CANON, type CaptureKind } from './capture.js';
-import { embedAndStoreNote } from '../lib/embeddings.js';
+import { embedAndStoreNote, embedText } from '../lib/embeddings.js';
+import { cosineSimilarity, unpackEmbedding } from '../lib/embeddingMath.js';
 
 // Read a Brain note by title (and optional folder).
 registerTool({
@@ -137,6 +138,40 @@ registerTool({
     });
     if (notes.length === 0) return `No Brain notes match "${q}".`;
     return notes.map((n) => `- ${n.folder ? n.folder + '/' : ''}${n.title}: ${n.summary}`).join('\n');
+  },
+});
+
+// Search the Brain by meaning, not literal substring — complements search_brain.
+registerTool({
+  name: 'search_brain_semantic',
+  description:
+    'Search shared Brain notes by meaning rather than exact keywords — finds notes related to a ' +
+    'concept even when they use different words. Returns matching titles + summaries, most relevant ' +
+    'first. Try this when search_brain (literal substring match) comes up empty or the query is ' +
+    'conceptual rather than a specific phrase.',
+  input_schema: {
+    type: 'object',
+    properties: { query: { type: 'string' } },
+    required: ['query'],
+  },
+  async execute(input, ctx) {
+    const query = String(input.query);
+    const notes = await prisma.brainNote.findMany({
+      where: { serverId: ctx.serverId, embedding: { not: null } },
+      select: { title: true, folder: true, summary: true, embedding: true },
+    });
+    if (notes.length === 0) return 'No Brain notes have semantic embeddings yet.';
+
+    const queryVector = await embedText(query);
+    const ranked = notes
+      .map((n) => ({
+        note: n,
+        score: cosineSimilarity(queryVector, unpackEmbedding(n.embedding as Buffer)),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+
+    return ranked.map(({ note: n }) => `- ${n.folder ? n.folder + '/' : ''}${n.title}: ${n.summary}`).join('\n');
   },
 });
 
