@@ -135,6 +135,30 @@ for (const rel of ['node_modules/@prisma/engines', 'node_modules/prisma', 'node_
 }
 console.log(`  ✓ removed ${(pruned / 1024 / 1024).toFixed(0)} MB`);
 
+// onnxruntime-web ships browser-only WASM binaries + sourcemaps that never run
+// here. @xenova/transformers/src/backends/onnx.js unconditionally imports
+// BOTH onnxruntime-node and onnxruntime-web (its own comment explains why:
+// dynamic import didn't work with its bundler setup) — so the package can't
+// be dropped outright, that import would throw. But in a Node process it
+// binds `ONNX` to onnxruntime-node and puts 'cpu' ahead of 'wasm' in
+// executionProviders, so onnxruntime-web's `initializeWebAssembly` (the only
+// place that reads *.wasm — confirmed by reading dist/ort-web.node.js) never
+// runs. Verified empirically, not just by reading the source: moved every
+// .wasm/.map out of a real node_modules/onnxruntime-web/dist and ran the
+// actual embedText() pipeline end-to-end — it completed normally.
+console.log('› pruning onnxruntime-web browser-only WASM binaries + sourcemaps');
+const ortWebDist = path.join(stagedServer, 'node_modules/onnxruntime-web/dist');
+let ortPruned = 0;
+if (existsSync(ortWebDist)) {
+  for (const entry of readdirSync(ortWebDist)) {
+    if (!entry.endsWith('.wasm') && !entry.endsWith('.map')) continue;
+    const target = path.join(ortWebDist, entry);
+    ortPruned += statSync(target).size;
+    rmSync(target, { force: true });
+  }
+}
+console.log(`  ✓ removed ${(ortPruned / 1024 / 1024).toFixed(0)} MB`);
+
 // File count is the number that predicts install time on Windows, so report it
 // alongside size — a change that shrinks megabytes but not files will not make
 // installing meaningfully faster, and this makes that visible at build time.
