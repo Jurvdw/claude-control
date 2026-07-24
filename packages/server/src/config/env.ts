@@ -30,7 +30,7 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('./storage'),
-  // Where @xenova/transformers caches downloaded model weights (~90MB, once
+  // Where @xenova/transformers caches downloaded model weights (~24MB, once
   // per install). Must be writable — the library's own default (inside its
   // node_modules folder) lives inside the read-only app.asar in the packaged
   // desktop app, so this points it somewhere durable instead (see electron/main.cjs).

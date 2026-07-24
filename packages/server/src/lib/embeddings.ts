@@ -11,7 +11,7 @@ const MODEL = 'Xenova/all-MiniLM-L6-v2';
 // its own node_modules folder (relative to where the library is installed).
 // In the packaged Electron app that folder lives inside the read-only
 // app.asar archive, so the first real embedding attempt would try to write
-// ~90MB into a read-only path and fail. Point it at a writable, per-install
+// ~24MB into a read-only path and fail. Point it at a writable, per-install
 // directory instead — same pattern as STORAGE_LOCAL_DIR/PG_DATA_DIR (dev
 // gets a relative default, the packaged app gets a userData path; see
 // electron/main.cjs). Set at module load, before any pipeline() call.
@@ -47,7 +47,7 @@ function getExtractor(): Promise<Extractor> {
 /**
  * Embed arbitrary text into a 384-dim vector using a local model — no API
  * key, no per-call network request. Loads the model once, lazily; the first
- * call in a process downloads ~90MB from Hugging Face and caches it on disk,
+ * call in a process downloads ~24MB from Hugging Face and caches it on disk,
  * every call after (including in later runs) is fully offline.
  */
 export async function embedText(text: string): Promise<Float32Array> {
