@@ -274,11 +274,11 @@ test.describe('Claude Control desktop', () => {
     const lastMarker = 'virtuoso e2e message 30';
     await page.evaluate(
       async ({ serverId, channelId, lastMarker }) => {
-        // Stays under the 50-message page-size cliff in
-        // GET /servers/:serverId/channels/:channelId/messages (that endpoint
-        // returns the oldest N, not newest N, when unpaginated — a separate,
-        // pre-existing bug, not this test's concern) so all 30 seeded
-        // messages come back regardless of that bug.
+        // 30 stays under the 50-message page size, keeping this test focused
+        // on virtualization alone. The oldest-vs-newest-message pagination
+        // bug this used to dodge is fixed and covered separately by
+        // "loads the most recent messages when a channel has more than one
+        // page of history" below.
         for (let i = 1; i <= 30; i++) {
           const content = i === 30 ? lastMarker : `virtuoso e2e message ${i}`;
           const res = await fetch(`/servers/${serverId}/channels/${channelId}/messages`, {
@@ -308,6 +308,57 @@ test.describe('Claude Control desktop', () => {
     // messages 10-19, silently asserting an 11-message range instead of
     // just message 1.
     await expect(page.getByRole('paragraph').filter({ hasText: /^virtuoso e2e message 1$/ })).toHaveCount(0);
+  });
+
+  test('loads the most recent messages when a channel has more than one page of history', async ({ page }) => {
+    // Regression: GET /servers/:serverId/channels/:channelId/messages used to
+    // order ASC with no cursor, so the unpaginated initial load returned the
+    // OLDEST `limit` (default 50) messages instead of the newest — opening a
+    // channel with more than 50 messages showed ancient history, not the
+    // current conversation. Fixed by always querying DESC and reversing for
+    // display (packages/server/src/lib/messagePagination.ts).
+    await signUp(page);
+    await createWorkspace(page);
+
+    const { serverId, channelId } = await page.evaluate(async () => {
+      const { servers } = await fetch('/servers', { credentials: 'include' }).then((r) => r.json());
+      const serverId = servers[0].id;
+      const { channels } = await fetch(`/servers/${serverId}/channels`, { credentials: 'include' }).then((r) => r.json());
+      return { serverId, channelId: channels[0].id };
+    });
+
+    // 55 comfortably crosses the 50-message default page size — the exact
+    // boundary the old ASC-with-no-cursor query got wrong.
+    const lastMarker = 'pagination e2e message 55';
+    await page.evaluate(
+      async ({ serverId, channelId, lastMarker }) => {
+        for (let i = 1; i <= 55; i++) {
+          const content = i === 55 ? lastMarker : `pagination e2e message ${i}`;
+          const res = await fetch(`/servers/${serverId}/channels/${channelId}/messages`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          });
+          if (!res.ok) throw new Error(`message ${i} POST failed: ${res.status}`);
+        }
+      },
+      { serverId, channelId, lastMarker },
+    );
+
+    // Reload so the channel is fetched fresh via the unpaginated (no
+    // `before` cursor) initial-load path — the exact path that was broken.
+    await page.reload();
+    await page.getByRole('heading', { name: /# general/ }).waitFor({ timeout: 60_000 });
+
+    // Newest message (55) must be visible without any manual scrolling.
+    await expect(page.getByRole('paragraph').filter({ hasText: lastMarker })).toBeVisible({ timeout: 15_000 });
+
+    // Under the old bug, the initial load would have returned messages 1-50
+    // (the OLDEST page) — message 50 would be the newest thing on screen and
+    // messages 51-55 would never load. Assert 51 IS present, proving the
+    // server returned the newest page, not the oldest.
+    await expect(page.getByRole('paragraph').filter({ hasText: /^pagination e2e message 51$/ })).toHaveCount(1);
   });
 
   test('sets a light theme via Settings and persists it across reload', async ({ page }) => {

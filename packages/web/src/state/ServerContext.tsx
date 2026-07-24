@@ -123,7 +123,10 @@ export function ServerProvider({ children }: { children: React.ReactNode }) {
   const loadMoreMessages = useCallback(async () => {
     if (!activeServer || !activeChannel || messageList.length === 0) return;
     const oldest = messageList[0];
-    const { messages } = await import('../lib/api').then(m => m.messages.list(activeServer.id, activeChannel.id, oldest.id));
+    // `before` must be a timestamp the server can parse with `new Date(...)` —
+    // oldest.id is a CUID, not a date, and was silently producing an Invalid
+    // Date on the server (a distinct bug from the pagination direction fix).
+    const { messages } = await import('../lib/api').then(m => m.messages.list(activeServer.id, activeChannel.id, oldest.createdAt));
     setMessageList(prev => [...messages, ...prev]);
   }, [activeServer, activeChannel, messageList]);
 

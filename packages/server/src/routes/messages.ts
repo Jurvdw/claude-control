@@ -7,6 +7,7 @@ import { bus } from '../realtime/bus.js';
 import { enqueueAgentRun } from '../agents/dispatch.js';
 import { fireKeywordHooks, fireFileHooks } from '../agents/hooks.js';
 import { storage } from '../lib/storage.js';
+import { buildRecentMessagesArgs, toChronological } from '../lib/messagePagination.js';
 
 export const messagesRouter = Router({ mergeParams: true });
 
@@ -42,19 +43,17 @@ messagesRouter.get('/:channelId/messages', async (req, res, next) => {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const before = req.query.before as string | undefined;
 
-    const messages = await prisma.message.findMany({
-      where: {
-        channelId: req.params.channelId,
-        serverId: req.membership!.serverId,
-        ...(before && { createdAt: { lt: new Date(before) } }),
-      },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-      select: messageSelect,
-    });
+    const rows = await prisma.message.findMany(
+      buildRecentMessagesArgs(
+        { channelId: req.params.channelId, serverId: req.membership!.serverId },
+        before,
+        limit,
+        messageSelect,
+      ),
+    );
 
     return res.json({
-      messages: messages.map(formatMessage),
+      messages: toChronological(rows).map(formatMessage),
     });
   } catch (err) {
     next(err);
@@ -150,18 +149,16 @@ messagesRouter.get('/dms/:agentId/messages', async (req, res, next) => {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const before = req.query.before as string | undefined;
 
-    const messages = await prisma.message.findMany({
-      where: {
-        dmThreadId: thread.id,
-        serverId: req.membership!.serverId,
-        ...(before && { createdAt: { lt: new Date(before) } }),
-      },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-      select: messageSelect,
-    });
+    const rows = await prisma.message.findMany(
+      buildRecentMessagesArgs(
+        { dmThreadId: thread.id, serverId: req.membership!.serverId },
+        before,
+        limit,
+        messageSelect,
+      ),
+    );
 
-    return res.json({ messages: messages.map(formatMessage) });
+    return res.json({ messages: toChronological(rows).map(formatMessage) });
   } catch (err) {
     next(err);
   }
