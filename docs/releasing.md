@@ -19,18 +19,30 @@ running agent is never interrupted mid-task.
 ## Cutting a release
 
 ```bash
-# 1. Bump the version — this is what the updater compares against.
-npm version patch --workspace @cc/desktop --no-git-tag-version
+# 1. Bump the version — this is what the updater compares against. The
+#    desktop package's workspace name is "claude-control" (unscoped, same as
+#    root), not "@cc/desktop" — bump root + packages/desktop/package.json
+#    together (see any past "Release x.y.z" commit for the exact diff shape),
+#    then `npm install --package-lock-only` to sync the lockfile.
 
 # 2. Build + upload installer, blockmap and latest.yml to a GitHub Release.
-GH_TOKEN=ghp_xxx npm run release
+GH_TOKEN=ghp_xxx npm run release -w packages/desktop
 ```
 
-`electron-builder` creates the release as a **draft**. Publish it in the GitHub
-UI when ready — clients only see it once it's published.
+`build.publish[0].releaseType` in `packages/desktop/package.json` is
+`"release"`, not `"draft"` — the release goes **live immediately** when this
+finishes, no separate publish step. (If that value is ever changed to
+`"draft"`, publish it in the GitHub UI when ready — clients only see it once
+published.)
 
 Version numbers must increase (semver). The updater ignores anything that isn't
 newer than the running version, so a re-published identical version is a no-op.
+
+Release notes are not generated automatically — the command above publishes
+with an empty body. Write them and attach with:
+```bash
+gh release edit vX.Y.Z --title "…" --notes-file notes.md
+```
 
 ## What each artifact does
 
